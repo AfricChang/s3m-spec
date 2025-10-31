@@ -205,7 +205,11 @@ namespace S3MB
 			else
 			{
 				std::wstring strBufferFile = strImageDir + pTileInfos->m_mapBuffers[i].m_strFile;
+#ifdef WIN32
+				std::string strBuffer = StringUtil::UnicodeToANSI(strBufferFile);
+#else
 				std::string strBuffer = StringUtil::UNICODE_to_UTF8(strBufferFile);
+#endif // WIN32
 
 				unsigned int size = pTileInfos->m_mapBuffers[i].m_nByteLength;
 				unsigned char* extendBuffer = new unsigned char[size];
@@ -218,6 +222,8 @@ namespace S3MB
 				pTileInfos->m_mapBuffers[i].m_bManageBuffer = true;
 			}
 		}
+		//MetaData
+		ParseMetaData(pTileInfos, doc);
 
 		return pTileInfos;
 	}
@@ -282,11 +288,11 @@ namespace S3MB
 		unsigned char* pBuffer = new unsigned char[nBufferSize];
 		const GLTFBuffer& gltfBuffer = pTileInfos->m_mapBuffers[gltfBufferView.m_nBufferIndex];
 
-		if (gltfBufferView.m_nByteStride == 0)
-		{
-			memcpy(pBuffer, gltfBuffer.m_pBuffer + gltfBufferView.m_nByteOffset + nByteOffset, nBufferSize);
-		}
-		else if (gltfBufferView.m_nByteStride != 0)
+        if (gltfBufferView.m_nByteStride == 0)
+        {
+            memcpy(pBuffer, gltfBuffer.m_pBuffer + gltfBufferView.m_nByteOffset + nByteOffset, nBufferSize);
+        }
+        else if (gltfBufferView.m_nByteStride != 0)
 		{
 			for (int i = 0; i < nCount; i++)
 			{
@@ -337,6 +343,95 @@ namespace S3MB
 		case 5: return OT_TRIANGLE_STRIP;
 		case 6: return OT_TRIANGLE_FAN;
 		default: return OT_TRIANGLE_LIST;
+		}
+	}
+
+	S3MB::PropType GLTFParser::String2PropType(const std::wstring& strType)
+	{
+		if (StringUtil::CompareNoCase(strType, U("SCALAR")))
+		{
+			return PropType::SCALAR;
+		}
+		if (StringUtil::CompareNoCase(strType, U("VEC2")))
+		{
+			return PropType::VEC2;
+		}
+		if (StringUtil::CompareNoCase(strType, U("VEC3")))
+		{
+			return PropType::VEC3;
+		}
+		if (StringUtil::CompareNoCase(strType, U("VEC4")))
+		{
+			return PropType::VEC4;
+		}
+		if (StringUtil::CompareNoCase(strType, U("MAT2")))
+		{
+			return PropType::MAT2;
+		}
+		if (StringUtil::CompareNoCase(strType, U("MAT3")))
+		{
+			return PropType::MAT3;
+		}
+		if (StringUtil::CompareNoCase(strType, U("MAT4")))
+		{
+			return PropType::MAT4;
+		}
+		if (StringUtil::CompareNoCase(strType, U("BOOLEAN")))
+		{
+			return PropType::BOOLEAN;
+		}
+		if (StringUtil::CompareNoCase(strType, U("STRING")))
+		{
+			return PropType::STRING;
+		}
+		if (StringUtil::CompareNoCase(strType, U("ENUM")))
+		{
+			return PropType::ENUM;
+		}
+		return PropType::UNKNOWNTYPE;
+	}
+
+	S3MB::PropComponentType GLTFParser::String2PropComponentType(const std::wstring& strComponentType)
+	{
+		if (StringUtil::CompareNoCase(strComponentType, U("INT8")))
+		{
+			return PropComponentType::INT8;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("UINT8")))
+		{
+			return PropComponentType::UINT8;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("INT16")))
+		{
+			return PropComponentType::INT16;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("UINT16")))
+		{
+			return PropComponentType::UINT16;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("INT32")))
+		{
+			return PropComponentType::INT32;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("UINT32")))
+		{
+			return PropComponentType::UINT32;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("INT64")))
+		{
+			return PropComponentType::INT64;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("UINT64")))
+		{
+			return PropComponentType::UINT64;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("FLOAT32")))
+		{
+			return PropComponentType::FLOAT32;
+		}
+		if (StringUtil::CompareNoCase(strComponentType, U("FLOAT64")))
+		{
+			return PropComponentType::FLOAT64;
 		}
 	}
 
@@ -1033,6 +1128,104 @@ namespace S3MB
 		return true;
 	}
 
+	bool GLTFParser::ParseMetaData(GLTFTileInfos_2* pTileInfos, rapidjson::Document& doc)
+	{
+		if (!doc.HasMember("extensions"))
+		{
+			return false;
+		}
+		rapidjson::Value & extensions = doc["extensions"];
+		if (!extensions.HasMember("EXT_structural_metadata"))
+		{
+			return false;
+		}
+		rapidjson::Value & metaData = extensions["EXT_structural_metadata"];
+		if (!metaData.HasMember("propertyTables") || !metaData.HasMember("schema"))
+		{
+			return false;
+		}
+		GLTFMetaData mMetaData;
+		mMetaData.mapSchemaClass;
+		rapidjson::Value & classes = metaData["schema"]["classes"];
+		for (auto memItor = classes.MemberBegin(); memItor != classes.MemberEnd(); memItor++)
+		{
+			rapidjson::Value& iClass = memItor->value;
+			GLTFSchemaClass schemaClass;
+			schemaClass.strName = StringUtil::UTF8_to_UNICODE(iClass.GetObject()["name"].GetString());
+
+			rapidjson::Value& props = iClass["properties"];
+			for (auto propItor = props.MemberBegin(); propItor != props.MemberEnd(); propItor++)
+			{
+				rapidjson::Value& iProp = propItor->value;
+				GLTFSchemaProp singleProp;
+				singleProp.strName = StringUtil::UTF8_to_UNICODE(iProp["name"].GetString());
+				singleProp.strType = StringUtil::UTF8_to_UNICODE(iProp["type"].GetString());
+				if (iProp.HasMember("componentType"))
+				{
+					singleProp.strComponentType = StringUtil::UTF8_to_UNICODE(iProp["componentType"].GetString());
+				}
+				wstring strPropKey;
+				strPropKey = StringUtil::UTF8_to_UNICODE(propItor->name.GetString());
+				schemaClass.mapScemaProp[strPropKey] = singleProp;
+			}
+
+			wstring strClassKey;
+			strClassKey = StringUtil::UTF8_to_UNICODE(memItor->name.GetString());
+			mMetaData.mapSchemaClass[strClassKey] = schemaClass;
+		}
+
+		rapidjson::Value & propTables = metaData["propertyTables"];
+		for (int i = 0; i < propTables.GetArray().Size(); i++)
+		{
+			rapidjson::Value & iPropTable = propTables.GetArray()[i];
+			GLTFPropertyTable propTable;
+			propTable.bHandled = false;
+			propTable.nCount = iPropTable["count"].GetInt();
+			propTable.strClassName = StringUtil::UTF8_to_UNICODE(iPropTable["class"].GetString());
+			propTable.strName = StringUtil::UTF8_to_UNICODE(iPropTable["name"].GetString());
+
+			rapidjson::Value & props = iPropTable["properties"];
+			for (auto propItor = props.MemberBegin(); propItor != props.MemberEnd(); propItor++)
+			{
+				wstring strPropKey;
+				strPropKey = StringUtil::UTF8_to_UNICODE(propItor->name.GetString());
+				rapidjson::Value& prop = propItor->value;
+				GLTFProp gProp;
+				gProp.nValues = prop["values"].GetInt();
+				{
+					GLTFBufferView& bufferView = pTileInfos->m_mapBufferViews[gProp.nValues];
+					unsigned char* pBuffer = new unsigned char[bufferView.m_nByteLength];
+					memcpy(pBuffer, pTileInfos->m_mapBuffers[bufferView.m_nBufferIndex].m_pBuffer + bufferView.m_nByteOffset, bufferView.m_nByteLength);
+					gProp.pValueBuffer = pBuffer;
+				}
+				if (prop.HasMember("stringOffsetType"))
+				{
+					gProp.strStringOffsetType = StringUtil::UTF8_to_UNICODE(prop["stringOffsetType"].GetString());
+					gProp.eStringOffsetType = String2PropComponentType(gProp.strStringOffsetType);
+					gProp.nStringOffset = prop["stringOffsets"].GetInt();
+					GLTFBufferView& bufferView = pTileInfos->m_mapBufferViews[gProp.nStringOffset];
+					unsigned char* pBuffer = new unsigned char[bufferView.m_nByteLength];
+					memcpy(pBuffer, pTileInfos->m_mapBuffers[bufferView.m_nBufferIndex].m_pBuffer + bufferView.m_nByteOffset, bufferView.m_nByteLength);
+					gProp.pStrOffsetBuffer = pBuffer;
+				}
+				if (prop.HasMember("arrayOffsetType"))
+				{
+					gProp.strArrayOffsetType = StringUtil::UTF8_to_UNICODE(prop["arrayOffsetType"].GetString());
+					gProp.eArrayOffsetType = String2PropComponentType(gProp.strArrayOffsetType);
+					gProp.nArrayOffset = prop["arrayOffset"].GetInt();
+					GLTFBufferView& bufferView = pTileInfos->m_mapBufferViews[gProp.nArrayOffset];
+					unsigned char* pBuffer = new unsigned char[bufferView.m_nByteLength];
+					memcpy(pBuffer, pTileInfos->m_mapBuffers[bufferView.m_nBufferIndex].m_pBuffer + bufferView.m_nByteOffset, bufferView.m_nByteLength);
+					gProp.pArrOffsetBuffer = pBuffer;
+				}
+				propTable.mapProps[strPropKey] = gProp;
+			}
+			mMetaData.vecPropTable.push_back(propTable);
+		}
+		pTileInfos->m_metaData = mMetaData;
+		return true;
+	}
+
 	bool GLTFParser::ParseNode(GLTFTileInfos_2* pTileInfos, rapidjson::Document & doc)
 	{
 		rapidjson::Value& scenes = doc["scenes"];
@@ -1407,6 +1600,26 @@ namespace S3MB
 						{
 							gltfAttributes.m_nBatchIds = attribute["_BATCHID"].GetInt();
 						}
+						if (attribute.HasMember("_SCALE"))
+						{
+							gltfAttributes.m_nScale = attribute.GetObject()["_SCALE"].GetInt();
+						}
+						if (attribute.HasMember("_ROTATION"))
+						{
+							gltfAttributes.m_nRotation = attribute.GetObject()["_ROTATION"].GetInt();
+						}
+						int idx = 0;
+						while (true)
+						{
+							std::string strKey = "_FEATURE_ID_" + std::to_string(idx);
+							if (!attribute.HasMember(strKey.c_str()))
+							{
+								break;
+							}
+							int iFeatureIdx = attribute[strKey.c_str()].GetInt();
+							gltfAttributes.m_vecFeatureID.push_back(iFeatureIdx);
+							idx++;
+						}
 						gltfPrimitive.m_gltfAttributes = gltfAttributes;
 					}
 
@@ -1467,6 +1680,18 @@ namespace S3MB
 								{
 									gltfDraco.m_nSecondColorIndex = attribute["_BATCHID"].GetInt();
 								}
+								int idx = 0;
+								while (true)
+								{
+									std::string strKey = "_FEATURE_ID_" + std::to_string(idx);
+									if (!attribute.HasMember(strKey.c_str()))
+									{
+										break;
+									}
+									int iFeatureIdx = attribute[strKey.c_str()].GetInt();
+									gltfDraco.m_vecFeatureID.push_back(iFeatureIdx);
+									idx++;
+								}
 							}
 
 							if (draco.HasMember("bufferView"))
@@ -1475,6 +1700,30 @@ namespace S3MB
 								gltfDraco.m_nBufferViewIndex = bufferrView.GetInt();
 							}
 							gltfPrimitive.m_gltfDraco = gltfDraco;
+						}
+						if (extensions.HasMember("EXT_mesh_features"))
+						{
+							rapidjson::Value& mesh_feature = extensions.GetObject()["EXT_mesh_features"];
+							if (mesh_feature.HasMember("featureIds"))
+							{
+								rapidjson::Value& featureIds = mesh_feature.GetObject()["featureIds"];
+								for (int i = 0; i < featureIds.GetArray().Size(); i++)
+								{
+									rapidjson::Value & featureId = featureIds.GetArray()[i];
+									if (featureId.HasMember("texture"))
+									{
+										continue;
+									}
+									GLTFFeatureId fId;
+									if (featureId.HasMember("attribute"))
+									{
+										fId.nAttribute = featureId["attribute"].GetInt();
+									}
+									fId.nFeatureCount = featureId["featureCount"].GetInt();
+									fId.nPropertyTable = featureId["propertyTable"].GetInt();
+									gltfPrimitive.m_vecFeatureId.push_back(fId);
+								}
+							}
 						}
 					}
 
@@ -1492,11 +1741,28 @@ namespace S3MB
 		for (unsigned int i = 0; i < accessors.Size(); i++)
 		{
 			rapidjson::Value& accessor = accessors[i];
-			unsigned int nBufferIndex = accessor["bufferView"].GetUint();
-			unsigned int nByteOffset = accessor["byteOffset"].GetUint();
-			unsigned int nCount = accessor["count"].GetUint();
-			unsigned int nComponentType = accessor["componentType"].GetUint();
-			const char* dtype = accessor["type"].GetString();
+            unsigned int nBufferIndex = 0,nByteOffset = 0, nCount = 0, nComponentType = 0;
+            const char* dtype = nullptr;
+            if (accessor.HasMember("bufferView"))
+            {
+                nBufferIndex = accessor["bufferView"].GetUint();
+            }
+            if (accessor.HasMember("byteOffset"))
+            {
+                nByteOffset = accessor["byteOffset"].GetUint();
+            }
+            if (accessor.HasMember("count"))
+            {
+                nCount = accessor["count"].GetUint();
+            }
+            if (accessor.HasMember("componentType"))
+            {
+                nComponentType = accessor["componentType"].GetUint();
+            }
+            if (accessor.HasMember("type"))
+            {
+                dtype = accessor["type"].GetString();
+            }
 			std::string strDataType(dtype);
 
 			GLTFAccessor gltfAccessor;
@@ -1935,29 +2201,34 @@ namespace S3MB
 	bool GLTFParser::ParseExtensions(GLTFTileInfos_2* pTileInfos, rapidjson::Document& doc)
 	{
 		rapidjson::Value& extensions = doc["extensions"];
-		if (extensions.Empty())
+        if (!extensions.IsObject())
 		{
 			return false;
 		}
 
-		rapidjson::Value& cesium_rtc = extensions["CESIUM_RTC"];
-		if (cesium_rtc.Empty())
-		{
-			return false;
-		}
+        if (extensions.HasMember("CESIUM_RTC"))
+        {
+            rapidjson::Value& cesium_rtc = extensions["CESIUM_RTC"];
+            if (cesium_rtc.Empty())
+            {
+                return false;
+            }
+            if (cesium_rtc.HasMember("center"))
+            {
+                rapidjson::Value& jCenter = cesium_rtc["center"];
+                if (jCenter.Empty())
+                {
+                    return false;
+                }
 
-		rapidjson::Value& jCenter = cesium_rtc["center"];
-		if (jCenter.Empty())
-		{
-			return false;
-		}
-
-		if (jCenter.IsArray())
-		{
-			pTileInfos->m_vCesuimRTC.x = jCenter[0].GetDouble();
-			pTileInfos->m_vCesuimRTC.y = jCenter[1].GetDouble();
-			pTileInfos->m_vCesuimRTC.z = jCenter[2].GetDouble();
-		}
+                if (jCenter.IsArray())
+                {
+                    pTileInfos->m_vCesuimRTC.x = jCenter[0].GetDouble();
+                    pTileInfos->m_vCesuimRTC.y = jCenter[1].GetDouble();
+                    pTileInfos->m_vCesuimRTC.z = jCenter[2].GetDouble();
+                }
+            }
+        }
 
 		return true;
 	}

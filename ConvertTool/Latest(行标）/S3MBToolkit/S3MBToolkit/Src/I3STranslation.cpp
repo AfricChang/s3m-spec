@@ -1958,7 +1958,7 @@ namespace S3MB
 					{
 						for (unsigned int i = 0; i < nCount; i++)
 						{
-							long lValue = 0;
+                            long long lValue = 0;
 							stream >> lValue;
 
 							Variant varValue(lValue);

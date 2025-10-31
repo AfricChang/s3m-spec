@@ -740,6 +740,18 @@ bool S3MB::DracoTool::DracoDecompressImpl(const char *pInputData, unsigned int s
 					}
 				}
 				break;
+				case draco::DT_UINT8:
+				{
+					pVertexAttDataType[i] = 4;//AT_8BIT
+					pVertexAttData[i] = new uint8_t[pVertexAttDim[0] * nNumPoints];
+					for (int j = 0; j < nNumPoints; j++)
+					{
+						vertexAttrAttValueIndex = pVertexAtt->mapped_index(draco::PointIndex(j));
+						uint8_t* pWriteVertex = (uint8_t*)pVertexAttData[i] + j * pVertexAttDim[0];
+						pVertexAtt->GetValue(vertexAttrAttValueIndex, pWriteVertex);
+					}
+				}
+				break;
 				default:
 					break;
 				}

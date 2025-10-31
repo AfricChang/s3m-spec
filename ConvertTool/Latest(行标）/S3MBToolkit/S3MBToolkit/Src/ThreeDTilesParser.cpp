@@ -30,6 +30,7 @@ namespace S3MB
 		m_nBatchIDNum = 0;
 		m_textureCompressType = TextureCompressType::TC_NONE;
 		m_nBufferSize = 0;
+		m_bCreateNewPaged = true;
 
 		S3MBFieldInfo idFieldInfo;
 		idFieldInfo.m_bRequired = true;
@@ -39,6 +40,7 @@ namespace S3MB
 		idFieldInfo.m_strForeignName = U("SmID");
 		m_mapFieldIndex[U("SmID")] = 0;
 		m_vecFieldInfo.push_back(idFieldInfo);
+		m_vecPropInfo.push_back(PropInfo());//保持与m_vecFieldInfo size一致
 	}
 
 	ThreeDTilesParser::~ThreeDTilesParser()
@@ -160,6 +162,569 @@ namespace S3MB
 	unsigned int ThreeDTilesParser::GetBufferSize() const
 	{
 		return m_nBufferSize;
+	}
+
+	rapidjson::Document ThreeDTilesParser::ParseBuffer(void* pBuffer, unsigned int nLength)
+	{
+		std::strstreambuf buf((char*)pBuffer, nLength);
+		std::istream ifs(&buf);
+		rapidjson::IStreamWrapper isw(ifs);
+		rapidjson::Document doc;
+		doc.ParseStream(isw);
+		return doc;
+	}
+
+	void ThreeDTilesParser::GetPropType(std::string strCompType, std::string strType, PropComponentType& eComponentType, PropType& eType, unsigned& nDim)
+	{
+		if (strCompType == "DOUBLE")
+		{
+			eComponentType = PropComponentType::FLOAT64;
+		}
+		else if (strCompType == "FLOAT")
+		{
+			eComponentType = PropComponentType::FLOAT32;
+		}
+		else if (strCompType == "BYTE")
+		{
+			eComponentType = PropComponentType::INT8;
+		}
+		else if (strCompType == "UNSIGNED_BYTE")
+		{
+			eComponentType = PropComponentType::UINT8;
+		}
+		else if (strCompType == "SHORT")
+		{
+			eComponentType = PropComponentType::INT16;
+		}
+		else if (strCompType == "UNSIGNED_SHORT")
+		{
+			eComponentType = PropComponentType::UINT16;
+		}
+		else if (strCompType == "INT")
+		{
+			eComponentType = PropComponentType::INT32;
+		}
+		else if (strCompType == "UNSIGNED_INT")
+		{
+			eComponentType = PropComponentType::UINT32;
+		}
+		else
+		{
+			std::cout << "不支持的属性类型：" << strCompType << std::endl;
+		}
+
+		if (strType == "SCALAR")
+		{
+			eType = PropType::SCALAR;
+			nDim = 1;
+		}
+		else if (strType == "VEC2")
+		{
+			eType = PropType::VEC2;
+			nDim = 2;
+		}
+		else if (strType == "VEC3")
+		{
+			eType = PropType::VEC3;
+			nDim = 3;
+		}
+		else if (strType == "VEC4")
+		{
+			eType = PropType::VEC4;
+			nDim = 4;
+		}
+		else
+		{
+		}
+	}
+
+	void ThreeDTilesParser::ParseIDRangeFromB3DM(S3MB::MemoryStream& stream)
+	{
+		unsigned int nOffset = stream.GetReadPosition();
+		unsigned char head[4];
+		stream >> head[0] >> head[1] >> head[2] >> head[3];
+		if (!(head[0] == 'b'  && head[1] == '3' && head[2] == 'd' && head[3] == 'm'))
+		{
+			return;
+		}
+		unsigned int nVersion, nTotalLenth;
+		stream >> nVersion >> nTotalLenth;
+		unsigned int nFeatureTableLength, nFeatureBinLength, nBatchTableLength, nBatchBinLength;
+		stream >> nFeatureTableLength >> nFeatureBinLength >> nBatchTableLength
+			>> nBatchBinLength;
+		nOffset += 28;
+		Vector3d ptTileCenter;
+		unsigned int nBatchSize = 0;
+		if (!(nBatchTableLength >= 570425344 || nBatchBinLength >= 570425344) && nFeatureTableLength > 0)
+		{
+			unsigned char* pFeatureJson = new unsigned char[nFeatureTableLength];
+			stream.Load(pFeatureJson, nFeatureTableLength);
+
+			rapidjson::Document docFeature = ParseBuffer(pFeatureJson, nFeatureTableLength);
+
+			rapidjson::Value & vBS = docFeature["BATCH_LENGTH"];
+			nBatchSize = vBS.GetUint();
+			if (nBatchSize > 0)
+			{
+				//unsigned int nBatchIDNum = m_3DTilesParser.GetBatchIDNum();
+				//m_3DTilesParser.SetBatchIDNum(nBatchIDNum + nBatchSize);
+				m_nBatchIDNum += nBatchSize;
+			}
+			unsigned char* pBatchJson = NULL;
+			if (nBatchTableLength > 0)
+			{
+				pBatchJson = new unsigned char[nBatchTableLength];
+				stream.Load(pBatchJson, nBatchTableLength);
+			}
+			if (nBatchTableLength > 0 && nBatchSize > 0)
+			{
+				rapidjson::Document docBatch = ParseBuffer(pBatchJson, nBatchTableLength);
+				for (auto itor = docBatch.MemberBegin(); itor != docBatch.MemberEnd(); itor++)
+				{
+					auto Key = (itor->name).GetString();
+					std::wstring strKey;
+					strKey = StringUtil::UTF8_to_UNICODE(Key);
+
+					if (m_mapFieldIndex.find(strKey) == m_mapFieldIndex.end())
+					{
+						PropComponentType eComponentType = PropComponentType::UNKNOWN_TYPE;
+						unsigned nDim = 0;
+						PropType eType = PropType::STRING;
+						if (!docBatch[Key].IsArray())
+						{
+							if (!docBatch[Key].HasMember("componentType"))
+							{
+								continue;
+							}
+							std::string	strCompType = docBatch[Key]["componentType"].GetString();
+							std::string strType = docBatch[Key]["type"].GetString();
+							GetPropType(strCompType, strType, eComponentType, eType, nDim);
+						}
+
+						m_mapFieldIndex[strKey] = m_vecFieldInfo.size();
+						S3MBFieldInfo pFieldInfo;
+						if (nDim == 1)
+						{
+							switch (eComponentType)
+							{
+							case PropComponentType::INT8:
+								pFieldInfo.m_nType = FieldType::FT_Byte;
+								pFieldInfo.m_nSize = 1;
+								break;
+							case PropComponentType::UINT8:
+							case PropComponentType::INT16:
+								pFieldInfo.m_nType = FieldType::FT_INT16;
+								pFieldInfo.m_nSize = 2;
+								break;
+							case PropComponentType::UINT16:
+							case PropComponentType::INT32:
+								pFieldInfo.m_nType = FieldType::FT_INT32;
+								pFieldInfo.m_nSize = 4;
+								break;
+							case PropComponentType::UINT32:
+							case PropComponentType::INT64:
+							case PropComponentType::UINT64:
+								pFieldInfo.m_nType = FieldType::FT_INT64;
+								pFieldInfo.m_nSize = 8;
+								break;
+							case PropComponentType::FLOAT32:
+								pFieldInfo.m_nType = FieldType::FT_Float;
+								pFieldInfo.m_nSize = 4;
+								break;
+							case PropComponentType::FLOAT64:
+								pFieldInfo.m_nType = FieldType::FT_Double;
+								pFieldInfo.m_nSize = 8;
+								break;
+							case PropComponentType::UNKNOWN_TYPE:
+							default:
+								pFieldInfo.m_nType = FieldType::FT_Text;
+								pFieldInfo.m_nSize = 255;
+								break;
+							}
+						}
+						else
+						{
+							pFieldInfo.m_nType = FieldType::FT_Text;
+							pFieldInfo.m_nSize = 255;
+						}
+						pFieldInfo.m_strName = strKey;
+						pFieldInfo.m_strForeignName = strKey;
+						pFieldInfo.m_bRequired = false;
+						m_vecFieldInfo.push_back(pFieldInfo);
+					}
+				}
+			}
+			if (pBatchJson != nullptr)
+			{
+				delete pBatchJson;
+				pBatchJson = nullptr;
+			}
+		}
+	}
+
+	void ThreeDTilesParser::ParseIDRangeFromI3DM(S3MB::MemoryStream& stream)
+	{
+		unsigned int nOffset = stream.GetReadPosition();
+		unsigned char head[4];
+		stream >> head[0] >> head[1] >> head[2] >> head[3];
+		if (!(head[0] == 'i'  && head[1] == '3' && head[2] == 'd' && head[3] == 'm'))
+		{
+			return;
+		}
+		unsigned int nVersion, nTotalLenth;
+		stream >> nVersion >> nTotalLenth;
+		unsigned int nFeatureTableLength, nFeatureBinLength, nBatchTableLength, nBatchBinLength, nGltfFormat;
+		stream >> nFeatureTableLength >> nFeatureBinLength >> nBatchTableLength >> nBatchBinLength >> nGltfFormat;
+		nOffset += 32;
+		Vector3d ptTileCenter;
+		unsigned int nInstanceSize = 0;
+
+		unsigned char* pFeatureJson = new unsigned char[nFeatureTableLength];
+		stream.Load(pFeatureJson, nFeatureTableLength);
+
+		rapidjson::Document docFeature = ParseBuffer(pFeatureJson,nFeatureTableLength);
+
+		rapidjson::Value & vIS = docFeature["INSTANCES_LENGTH"];
+		nInstanceSize = vIS.GetUint();
+		if (nInstanceSize > 0)
+		{
+			m_nBatchIDNum += nInstanceSize;
+		}
+		unsigned char* pBatchJson = NULL;
+		if (nBatchTableLength > 0)
+		{
+			pBatchJson = new unsigned char[nBatchTableLength];
+			stream.Load(pBatchJson, nBatchTableLength);
+		}
+		if (nBatchTableLength > 0 && nInstanceSize > 0)
+		{
+			rapidjson::Document docBatch = ParseBuffer(pBatchJson, nBatchTableLength);
+			for (auto itor = docBatch.MemberBegin(); itor != docBatch.MemberEnd(); itor++)
+			{
+				auto Key = (itor->name).GetString();
+				std::wstring strKey;
+				strKey = StringUtil::UTF8_to_UNICODE(Key);
+
+				if (m_mapFieldIndex.find(strKey) == m_mapFieldIndex.end())
+				{
+					PropComponentType eComponentType = PropComponentType::UNKNOWN_TYPE;
+					unsigned nDim = 0;
+					PropType eType = PropType::STRING;
+					if (!docBatch[Key].IsArray())
+					{
+						if (!docBatch[Key].HasMember("componentType"))
+						{
+							continue;
+						}
+						std::string	strCompType = docBatch[Key]["componentType"].GetString();
+						std::string strType = docBatch[Key]["type"].GetString();
+						GetPropType(strCompType, strType, eComponentType, eType, nDim);
+					}
+
+					m_mapFieldIndex[strKey] = m_vecFieldInfo.size();
+					S3MBFieldInfo pFieldInfo;
+					if (nDim == 1)
+					{
+						switch (eComponentType)
+						{
+						case PropComponentType::INT8:
+							pFieldInfo.m_nType = FieldType::FT_Byte;
+							pFieldInfo.m_nSize = 1;
+							break;
+						case PropComponentType::UINT8:
+						case PropComponentType::INT16:
+							pFieldInfo.m_nType = FieldType::FT_INT16;
+							pFieldInfo.m_nSize = 2;
+							break;
+						case PropComponentType::UINT16:
+						case PropComponentType::INT32:
+							pFieldInfo.m_nType = FieldType::FT_INT32;
+							pFieldInfo.m_nSize = 4;
+							break;
+						case PropComponentType::UINT32:
+						case PropComponentType::INT64:
+						case PropComponentType::UINT64:
+							pFieldInfo.m_nType = FieldType::FT_INT64;
+							pFieldInfo.m_nSize = 8;
+							break;
+						case PropComponentType::FLOAT32:
+							pFieldInfo.m_nType = FieldType::FT_Float;
+							pFieldInfo.m_nSize = 4;
+							break;
+						case PropComponentType::FLOAT64:
+							pFieldInfo.m_nType = FieldType::FT_Double;
+							pFieldInfo.m_nSize = 8;
+							break;
+						case PropComponentType::UNKNOWN_TYPE:
+						default:
+							pFieldInfo.m_nType = FieldType::FT_Text;
+							pFieldInfo.m_nSize = 255;
+							break;
+						}
+					}
+					else
+					{
+						pFieldInfo.m_nType = FieldType::FT_Text;
+						pFieldInfo.m_nSize = 255;
+					}
+					pFieldInfo.m_strName = strKey;
+					pFieldInfo.m_strForeignName = strKey;
+					pFieldInfo.m_bRequired = false;
+					m_vecFieldInfo.push_back(pFieldInfo);
+				}
+			}
+		}
+		if (pBatchJson != nullptr)
+		{
+			delete pBatchJson;
+			pBatchJson = nullptr;
+		}
+	}
+
+	void ThreeDTilesParser::ParseIDRangeFromGLB(S3MB::MemoryStream& stream)
+	{
+		unsigned char gltfHead[4];
+		stream >> gltfHead[0] >> gltfHead[1] >> gltfHead[2] >> gltfHead[3];
+
+		unsigned int nGltfVersion, nGLTFTotal, nJsonLenth, nJson;
+		stream >> nGltfVersion >> nGLTFTotal >> nJsonLenth >> nJson;
+
+		unsigned nStartGltfOffset = 20;
+
+		unsigned char* pBuffer = stream.GetDataPtr() + nStartGltfOffset;
+		if (nJsonLenth > 0 && EQUAL(nGltfVersion, 2.0))
+		{
+			std::strstreambuf buf((char*)pBuffer, nJsonLenth);
+			std::istream ifs(&buf);
+			rapidjson::IStreamWrapper isw(ifs);
+			//rapidjson::MemoryStream ms((char*)pBuffer, nJsonLenth);
+			//rapidjson::EncodedInputStream<rapidjson::UTF8<>, rapidjson::MemoryStream> eis(ms);
+			rapidjson::Document doc;
+			doc.ParseStream(isw);
+			if (doc.HasParseError())
+			{
+				return;
+			}
+			if (!doc.HasMember("extensions"))
+			{
+				return;
+			}
+			rapidjson::Value & extensions = doc["extensions"];
+			if (!extensions.HasMember("EXT_structural_metadata"))
+			{
+				return;
+			}
+			rapidjson::Value & metaData = extensions["EXT_structural_metadata"];
+			if (!metaData.HasMember("propertyTables") || !metaData.HasMember("schema"))
+			{
+				return;
+			}
+			rapidjson::Value & classes = metaData["schema"]["classes"];
+			for (auto memItor = classes.MemberBegin(); memItor != classes.MemberEnd(); memItor++)
+			{
+				rapidjson::Value& iClass = memItor->value;
+
+				rapidjson::Value& props = iClass["properties"];
+				for (auto propItor = props.MemberBegin(); propItor != props.MemberEnd(); propItor++)
+				{
+					wstring strPropKey;
+					strPropKey = StringUtil::UTF8_to_UNICODE(propItor->name.GetString());
+					if (m_mapFieldIndex.find(strPropKey) != m_mapFieldIndex.end())
+					{
+						continue;
+					}
+					rapidjson::Value& iProp = propItor->value;
+					GLTFSchemaProp singleSchemaProp;
+					PropInfo propInfo;
+					singleSchemaProp.strName = StringUtil::UTF8_to_UNICODE(iProp["name"].GetString());
+					singleSchemaProp.strType = StringUtil::UTF8_to_UNICODE(iProp["type"].GetString());
+					propInfo.eType = GLTFParser::String2PropType(singleSchemaProp.strType);
+					propInfo.eComponentType = PropComponentType::UNKNOWN_TYPE;
+					if (iProp.HasMember("componentType"))
+					{
+						singleSchemaProp.strComponentType = StringUtil::UTF8_to_UNICODE(iProp["componentType"].GetString());
+						propInfo.eComponentType = GLTFParser::String2PropComponentType(singleSchemaProp.strComponentType);
+					}
+					//开始添加属性头
+					S3MBFieldInfo fieldInfo;
+					fieldInfo.m_nType = FieldType::FT_Text;
+					fieldInfo.m_nSize = 255;
+					switch (propInfo.eType)
+					{
+					case PropType::BOOLEAN:
+						fieldInfo.m_nType = FieldType::FT_Boolean;
+						fieldInfo.m_nSize = 1;
+						break;
+					case PropType::ENUM:
+						fieldInfo.m_nType = FieldType::FT_Text;
+						break;
+					case PropType::STRING:
+					case PropType::VEC2:
+					case PropType::VEC3:
+					case PropType::VEC4:
+					case PropType::MAT2:
+					case PropType::MAT3:
+					case PropType::MAT4:
+						fieldInfo.m_nType = FieldType::FT_Text;
+						break;
+					case PropType::SCALAR:
+						switch (propInfo.eComponentType)
+						{
+						case PropComponentType::UINT8:
+							fieldInfo.m_nType = FieldType::FT_Byte;
+							fieldInfo.m_nSize = 1;
+							break;
+						case PropComponentType::INT8:
+						case PropComponentType::INT16:
+							fieldInfo.m_nType = FieldType::FT_INT16;
+							fieldInfo.m_nSize = 2;
+							break;
+						case PropComponentType::UINT16:
+						case PropComponentType::INT32:
+							fieldInfo.m_nType = FieldType::FT_INT32;
+							fieldInfo.m_nSize = 4;
+							break;
+						case PropComponentType::UINT32:
+						case PropComponentType::INT64:
+						case PropComponentType::UINT64:
+							fieldInfo.m_nType = FieldType::FT_INT64;
+							fieldInfo.m_nSize = 8;
+							break;
+						case PropComponentType::FLOAT32:
+							fieldInfo.m_nType = FieldType::FT_Float;
+							fieldInfo.m_nSize = 4;
+							break;
+						case PropComponentType::FLOAT64:
+							fieldInfo.m_nType = FieldType::FT_Double;
+							fieldInfo.m_nSize = 4;
+							break;
+						}
+						break;
+					}
+					fieldInfo.m_strName = strPropKey;
+					fieldInfo.m_strForeignName = singleSchemaProp.strName;
+					fieldInfo.m_bRequired = false;
+					m_mapFieldIndex[strPropKey] = m_vecFieldInfo.size();
+					m_vecFieldInfo.emplace_back(fieldInfo);
+					m_vecPropInfo.emplace_back(propInfo);
+					//schemaClass.mapScemaProp[strPropKey] = singleProp;
+				}
+				wstring strClassKey;
+				strClassKey = StringUtil::UTF8_to_UNICODE(memItor->name.GetString());
+			}
+
+			rapidjson::Value & propTables = metaData["propertyTables"];
+			for (int i = 0; i < propTables.GetArray().Size(); i++)
+			{
+				rapidjson::Value & iPropTable = propTables.GetArray()[i];
+				m_nBatchIDNum += iPropTable["count"].GetInt();
+			}
+		}
+	}
+
+	void ThreeDTilesParser::ReadFieldInfos(GLTFTileInfos_2 * pGltf, GLTFSchemaClass& schemaClass, GLTFPropertyTable& propTable)
+	{
+		for (int i = 0; i < propTable.nCount; i++)
+		{
+			std::wstring strID = U("SmID");
+			int nID = propTable.nBatchIDStart + i;
+
+			Feature* pFeature = new Feature;
+			pFeature->SetFieldInfos(m_fieldInfos);
+			pFeature->m_nID = nID;
+			pFeature->SetValue(strID, Variant(nID));
+
+			for (auto propItor : propTable.mapProps)
+			{
+				int idx = m_mapFieldIndex[propItor.first];
+				unsigned char* pValueBuffer = propItor.second.pValueBuffer;
+				unsigned char* pStringBuffer = propItor.second.pStrOffsetBuffer;
+				unsigned char* pArrayBuffer = propItor.second.pArrOffsetBuffer;
+				switch (m_vecPropInfo[idx].eType)
+				{
+				case PropType::SCALAR:
+				{
+					switch (m_vecPropInfo[idx].eComponentType)
+					{
+					case PropComponentType::INT8:
+						pFeature->SetValue(idx, Variant((short)pValueBuffer[i]));
+						break;
+					case PropComponentType::UINT8:
+						pFeature->SetValue(idx, Variant(pValueBuffer[i]));
+						break;
+					case PropComponentType::INT16:
+						pFeature->SetValue(idx, Variant(((short*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::UINT16:
+						pFeature->SetValue(idx, Variant(((unsigned short*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::INT32:
+						pFeature->SetValue(idx, Variant(((int*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::UINT32:
+                        pFeature->SetValue(idx, Variant((long long)((unsigned*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::INT64:
+                        pFeature->SetValue(idx, Variant(((long long*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::UINT64:
+                        pFeature->SetValue(idx, Variant((long long)((unsigned long long*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::FLOAT32:
+						pFeature->SetValue(idx, Variant(((float*)pValueBuffer)[i]));
+						break;
+					case PropComponentType::FLOAT64:
+						pFeature->SetValue(idx, Variant(((double*)pValueBuffer)[i]));
+						break;
+					}
+				}
+				break;
+				case PropType::BOOLEAN:
+				{
+					int byteIdx = floor(i / 8);
+					int bitIdx = i % 8;
+					auto bitValue = pValueBuffer[byteIdx] >> bitIdx & 1;
+					bool bValue = bitValue == 1;
+					pFeature->SetValue(idx, bValue);
+					break;
+				}
+				case PropType::STRING:
+				{
+                    unsigned long long nOffset = 0, nLength = 0;
+					switch (propItor.second.eStringOffsetType)
+					{
+					case PropComponentType::UINT8:
+						nOffset = (unsigned char)pStringBuffer[i];
+						nLength = (unsigned char)pStringBuffer[i + 1] - nOffset;
+						break;
+					case PropComponentType::UINT16:
+						nOffset = (unsigned short)((unsigned short*)pStringBuffer)[i];
+						nLength = (unsigned short)((unsigned short*)pStringBuffer)[i + 1] - nOffset;
+						break;
+					case PropComponentType::UINT32:
+                        nOffset = (unsigned)((unsigned*)pStringBuffer)[i];
+                        nLength = (unsigned)((unsigned*)pStringBuffer)[i + 1] - nOffset;
+						break;
+					case PropComponentType::UINT64:
+                        nOffset = (unsigned long long)((unsigned long long*)pStringBuffer)[i];
+                        nLength = (unsigned long long)((unsigned long long*)pStringBuffer)[i + 1] - nOffset;
+						break;
+					}
+					std::string strValue;
+					strValue.assign((const char*)pValueBuffer + nOffset, nLength);
+					pFeature->SetValue(idx, strValue);
+					break;
+				}
+				case  PropType::ENUM:
+					int nValue = (int)((int*)pValueBuffer)[i];
+					std::string strEnum = to_string(nValue);
+					pFeature->SetValue(idx, strEnum);
+					break;
+				}
+			}
+
+			m_vecFeature.emplace_back(pFeature);
+		}
 	}
 
 	const I3DMIDInfo& ThreeDTilesParser::GetI3DMInfo() const
@@ -514,58 +1079,60 @@ namespace S3MB
 			return false;
 		}
 
-		rapidjson::Value& properties = doc["properties"];
-		if (!properties.Empty())
-		{
-			rapidjson::Value& latitude = properties["Latitude"];
-			Vector3d vMax, vMin;
-			if (!latitude.Empty())
-			{
-				double dMin = latitude["minimum"].GetDouble() * RTOD;
-				double dMax = latitude["maximum"].GetDouble() * RTOD;
+        if (doc.HasMember("properties"))
+        {
+            rapidjson::Value& properties = doc["properties"];
+            if (properties.IsObject())
+            {
+                rapidjson::Value& latitude = properties["Latitude"];
+                Vector3d vMax, vMin;
+                if (!latitude.Empty())
+                {
+                    double dMin = latitude["minimum"].GetDouble() * RTOD;
+                    double dMax = latitude["maximum"].GetDouble() * RTOD;
 
-				vMax.y = dMax;
-				vMin.y = dMin;
-			}
+                    vMax.y = dMax;
+                    vMin.y = dMin;
+                }
 
-			rapidjson::Value& longitude = properties["Longitude"];
-			if (!longitude.Empty())
-			{
-				double dMin = longitude["minimum"].GetDouble() * RTOD;
-				double dMax = longitude["maximum"].GetDouble() * RTOD;
+                rapidjson::Value& longitude = properties["Longitude"];
+                if (!longitude.Empty())
+                {
+                    double dMin = longitude["minimum"].GetDouble() * RTOD;
+                    double dMax = longitude["maximum"].GetDouble() * RTOD;
 
-				vMax.x = dMax;
-				vMin.x = dMin;
-			}
+                    vMax.x = dMax;
+                    vMin.x = dMin;
+                }
 
-			// 求一个半径出来
-			vMax = MathEngine::SphericalToCartesian(vMax.x * DTOR, vMax.y * DTOR, vMax.z + GLOBAL_RADIUS);
-			vMin = MathEngine::SphericalToCartesian(vMin.x * DTOR, vMin.y * DTOR, vMin.z + GLOBAL_RADIUS);
+                // 求一个半径出来
+                vMax = MathEngine::SphericalToCartesian(vMax.x * DTOR, vMax.y * DTOR, vMax.z + GLOBAL_RADIUS);
+                vMin = MathEngine::SphericalToCartesian(vMin.x * DTOR, vMin.y * DTOR, vMin.z + GLOBAL_RADIUS);
 
-			BoundingBox bbox(vMin, vMax);
-			m_boundingSphere = BoundingSphere(bbox);
+                BoundingBox bbox(vMin, vMax);
+                m_boundingSphere = BoundingSphere(bbox);
 
-			for (auto itor = properties.MemberBegin(); itor != properties.MemberEnd(); itor++)
-			{
-				auto name = (itor->name).GetString();
-				std::string strName(name);
-				std::wstring wstrName = StringUtil::UTF8_to_UNICODE(strName);
+                //for (auto itor = properties.MemberBegin(); itor != properties.MemberEnd(); itor++)
+                //{
+                //	auto name = (itor->name).GetString();
+                //	std::string strName(name);
+                //	std::wstring wstrName = StringUtil::UTF8_to_UNICODE(strName);
 
-				S3MBFieldInfo fieldInfo;
-				fieldInfo.m_nType = FieldType::FT_Text;
-				fieldInfo.m_nSize = 255;
-				fieldInfo.m_strName = wstrName;
-				fieldInfo.m_strForeignName = wstrName;
-				fieldInfo.m_bRequired = false;
+                //	S3MBFieldInfo fieldInfo;
+                //	fieldInfo.m_nType = FieldType::FT_Text;
+                //	fieldInfo.m_nSize = 255;
+                //	fieldInfo.m_strName = wstrName;
+                //	fieldInfo.m_strForeignName = wstrName;
+                //	fieldInfo.m_bRequired = false;
 
-				if (m_mapFieldIndex.find(wstrName) == m_mapFieldIndex.end())
-				{
-					m_mapFieldIndex[wstrName] = m_vecFieldInfo.size();
-					m_vecFieldInfo.push_back(fieldInfo);
-				}
-			}
-		}
-
+                //	if (m_mapFieldIndex.find(wstrName) == m_mapFieldIndex.end())
+                //	{
+                //		m_mapFieldIndex[wstrName] = m_vecFieldInfo.size();
+                //		m_vecFieldInfo.push_back(fieldInfo);
+                //	}
+                //}
+            }
+        }
 		rapidjson::Value& root = doc["root"];
 
 		//矩阵
@@ -674,16 +1241,79 @@ namespace S3MB
 		}
 
 		GLTFTreeNode* pTreeNode = nullptr;
+		if (doc.HasMember("extensions"))
+		{
+			rapidjson::Value & extensions = doc["extensions"];
+			if (extensions.HasMember("3DTILES_multiple_contents"))
+			{
+				rapidjson::Value & content = doc["3DTILES_multiple_contents"]["content"];
+				std::vector<std::wstring> vecFile;
+				if (content.GetArray().Size() > 0)
+				{
+					for (int i = 0; i < content.GetArray().Size(); i++)
+					{
+						rapidjson::Value & contentSingle = content.GetArray()[i];
+						rapidjson::Value & url = contentSingle.GetObject()["url"];
+						if (content.HasMember("uri"))
+						{
+							url = content.GetObject()["uri"];
+						}
+						std::wstring strFile;
+						strFile = StringUtil::UTF8_to_UNICODE(url.GetString());
+
+						if (!strFile.empty())
+						{
+							std::vector<std::wstring> arrStr;
+                            StringUtil::Split(strFile,arrStr, '?');
+							strFile = arrStr[0];
+						}
+						if (StringUtil::IsFileExist(StringUtil::GetAbsolutePath(strDir, strFile)))
+						{
+							vecFile.push_back(strFile);
+						}
+					}
+
+					if (vecFile.size() > 0)
+					{
+						pTreeNode = new GLTFTreeNode;
+						pTreeNode->m_strFile = vecFile[0];
+						pTreeNode->m_vecFile = vecFile;
+						pTreeNode->m_bFileFind = true;
+						pTreeNode->m_boundSphere = sphere;
+						pTreeNode->m_strParentDir = strDir;
+						pTreeNode->m_nLod = nLod;
+						pTreeNode->m_RootMat = matParent;
+
+						if (root.HasMember("geometricError"))
+						{
+							pTreeNode->m_dGeometryError = root.GetObject()["geometricError"].GetDouble();
+						}
+
+						m_nLodNum = MAX(m_nLodNum, nLod);
+						m_nTotalNum++;
+						if (pParentNode != NULL)
+						{
+							pParentNode->m_vecChildNode.push_back(pTreeNode);
+							pTreeNode->m_pParentNode = pParentNode;
+						}
+					}
+				}
+			}
+		}
 		if (root.HasMember("content"))
 		{
 			rapidjson::Value& content = root["content"];
 			if (content.HasMember("url") || content.HasMember("uri"))
 			{
-				rapidjson::Value& url = content["url"];
-				if (content.HasMember("uri"))
-				{
-					url = content["uri"];
-				}
+                rapidjson::Value& url = content;
+                if (content.HasMember("uri"))
+                {
+                    url = content["uri"];
+                }
+                else
+                {
+                    url = content["url"];
+                }
 				std::wstring strFile = StringUtil::UTF8_to_UNICODE(url.GetString());
 
 				if (!strFile.empty())
@@ -1082,11 +1712,15 @@ namespace S3MB
 			rapidjson::Value& content = value["content"];
 			if (content.HasMember("url") || content.HasMember("uri"))
 			{
-				rapidjson::Value& url = content["url"];
+                rapidjson::Value& url = content;
 				if (content.HasMember("uri"))
 				{
 					url = content["uri"];
 				}
+                else
+                {
+                    url = content["url"];
+                }
 				std::wstring strFile = StringUtil::UTF8_to_UNICODE(url.GetString());
 
 				if (!strFile.empty())
@@ -1209,8 +1843,12 @@ namespace S3MB
 			FileUtil::MkDirEx(jsonDir);
 		}
 
+#ifdef WIN32
+		std::string strTemp = StringUtil::UnicodeToANSI(jsonFile);
+#else
 		std::string strTemp = StringUtil::UNICODE_to_UTF8(jsonFile);
-		strTemp = StringUtil::UTF8_to_ANSI(strTemp);
+#endif // WIN32
+
 		//解析gltf的json
 		unsigned char* jsonBuffer = new unsigned char[jsonLength];
 		memcpy(jsonBuffer, buffer, jsonLength);
@@ -1224,6 +1862,19 @@ namespace S3MB
 		std::wstring strImageDir = StringUtil::GetDir(StringUtil::GetAbsolutePath(pNode->m_strParentDir, pNode->m_strFile));
 		GLTFTileInfos_2* pTileInfos = GLTFParser::ParseGLTFTileInfos_2(jsonFile, buffer + jsonLength, m_nBufferSize, strImageDir, m_nAxisUpType);
 		remove(strTemp.c_str());
+
+		if (pTileInfos != nullptr && pTileInfos->m_mapImages.size() > 0)
+		{
+			ProcessTextureCompressType(pTileInfos->m_mapImages[0]);
+		}
+
+		return pTileInfos;
+	}
+
+	S3MB::GLTFTileInfos_2* ThreeDTilesParser::ParseGLTF(GLTFTreeNode* pNode, std::wstring strGltfPath)
+	{
+		std::wstring strImageDir = StringUtil::GetDir(StringUtil::GetAbsolutePath(pNode->m_strParentDir, pNode->m_strFile));
+		GLTFTileInfos_2* pTileInfos = GLTFParser::ParseGLTFTileInfos_2(strGltfPath, nullptr, 0, strImageDir, m_nAxisUpType);
 
 		if (pTileInfos != nullptr && pTileInfos->m_mapImages.size() > 0)
 		{

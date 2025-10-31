@@ -241,6 +241,7 @@ namespace S3MB
 		void SaveGroup(GLTFTreeNode* pNode, std::wstring strOutPath, RenderOperationGroup* pGroup);
 		bool SaveSCPFile(const Point3D& pos, const BoundingBox& box, std::vector<std::wstring> vecRootFile, std::vector<BoundingBox> vecRootBox, std::wstring strOutputDir);
 
+        bool GetIDMinMax(int& IDMin, int& IDMax, GLTFTreeNode* pNode);
 		bool GenerateS3MB();
 		void GetNodes(GLTFTreeNode* pNode, std::vector<GLTFTreeNode*>& vecNodes);
 		void ProcessTreeNode(GLTFTreeNode* pNode, std::wstring strInputDir, std::wstring strOutputDir);
@@ -248,10 +249,13 @@ namespace S3MB
 		bool ParseCMPT(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutputFile, RenderOperationGroup* pGroup, std::wstring strParentFileName);
 		bool ParseB3DM(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutDir, RenderOperationGroup* pGroup, std::wstring strFatherFileName);
 		bool ParseI3DM(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutDir, RenderOperationGroup* pGroup, std::wstring strFatherFileName);
+		bool ParseGLB(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutDir, RenderOperationGroup* pGroup, std::wstring strFatherFileName, Vector3d ptTileCenter);
+		void ReadFieldInfos(std::vector<Feature*> vecFeature, rapidjson::Document & docBatch, unsigned char* pBatchBin, unsigned nBatchSize);
 		void ParseIDRange(GLTFTreeNode* pNode);
 		void ParseIDRangeFromB3DM(MemoryStream& stream);
 		void ParseIDRangeFromCMPT(MemoryStream& stream);
 		void ParseIDRangeFromI3DM(MemoryStream& stream);
+		void ParseIDRangeFromGLB(MemoryStream& stream);
 
 #pragma region glTF 1.0
 		void MeshToGroup(GLTFTreeNode * pNode, GLTFTileInfos_1 *& pTileInfos, std::wstring strOutputPath, RenderOperationGroup* pGroup, std::wstring strParentPath, Point3D& pntCenter);
@@ -268,11 +272,13 @@ namespace S3MB
 
 		void SplitSkeletonByIndex(VertexDataPackage* pDataPackage, IndexPackage* pIndexPackage);
 		bool CreateInstanceInfo(VertexDataPackage* pVertexDataPackage, BoundingBox& entireBox, std::vector<Matrix4d>& vecMat, std::vector<unsigned int>& vecId);
+		bool IsInvalidVertex(VertexDataPackage* pDataPackage);
 
 	private:
 		static rapidjson::Document ParseBuffer(void* pBuffer, unsigned int nLength);
 		static TileContentType ParseTileContentType(MemoryStream& stream, bool bReset = true);
 		static FieldType GetFieldType(std::string strType);
+		static bool ReadFileDataToStream(const std::wstring& strFile, MemoryStream& stream);
 		static int NumOfComponents(std::string strType);
 
 	private:

@@ -99,7 +99,8 @@ namespace S3MB
 	{
 		TC_B3DM = 0,
 		TC_CMPT,
-		TC_I3DM
+		TC_I3DM,
+		TC_GLB
 	};
 
 	//! \brief 顶点颜色跟踪的材质属性

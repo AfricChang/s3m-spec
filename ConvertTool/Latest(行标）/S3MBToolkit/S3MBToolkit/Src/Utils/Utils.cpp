@@ -1362,7 +1362,12 @@ namespace S3MB
 		}
 		else
 		{
+#ifdef WIN32
 			std::string path = StringUtil::UnicodeToANSI(strPath);
+#else
+			std::string path = StringUtil::UNICODE_to_UTF8(strPath);
+#endif // WIN32
+
 			FILE* pFile = fopen(path.c_str(), "rb");
 			if (pFile != nullptr)
 			{

@@ -1023,7 +1023,7 @@ namespace S3MB
 		break;
 		case FT_INT64:
 		{
-			varValue = *(long*)pByte;
+            varValue = *(long long*)pByte;
 		}
 		break;
 		case FT_Double:

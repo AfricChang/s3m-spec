@@ -520,7 +520,7 @@ namespace S3MB
 		Set(iVal);
 	}
 
-	Variant::Variant(long lVal)
+	Variant::Variant(long long lVal)
 	{
 		SetNull();
 		Set(lVal);
@@ -645,7 +645,7 @@ namespace S3MB
 		return *this;
 	}
 
-	const Variant& Variant::operator=(long lVal)
+	const Variant& Variant::operator=(long long lVal)
 	{
 		Set(lVal);
 		return *this;
@@ -836,7 +836,7 @@ namespace S3MB
 		m_value.iVal = iVal;
 	}
 
-	void Variant::Set(long lVal)
+	void Variant::Set(long long lVal)
 	{
 		Clear();
 		m_nType = VT_Long;
@@ -1118,9 +1118,9 @@ namespace S3MB
 	}
 
 	//! 转换为int64 类型
-	long Variant::ToLong() const
+	long long Variant::ToLong() const
 	{
-		long nValue = 0;
+		long long nValue = 0;
 		switch (m_nType)
 		{
 		case VT_Null:

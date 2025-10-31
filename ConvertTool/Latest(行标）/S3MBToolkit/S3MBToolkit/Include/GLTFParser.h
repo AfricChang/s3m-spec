@@ -30,6 +30,10 @@ namespace S3MB
 		// gltf绘制类型转s3m绘制类型
 		static OperationType ToDrawOperationType(unsigned int nType);
 
+		static PropType String2PropType(const std::wstring& strType);
+
+		static PropComponentType String2PropComponentType(const std::wstring& strComponentType);
+
 	private:
 		// 读取文件
 		static bool ReadGLTFFile(const std::wstring& strPath, rapidjson::Document& doc);
@@ -64,6 +68,7 @@ namespace S3MB
 		static bool ParseBuffers(GLTFTileInfos_2* pTileInfos, rapidjson::Document& doc);
 		static bool ParseBuffers(GLTFTileInfos_2* pTileInfos, GLBChunk& chunk);
 		static bool ParseExtensions(GLTFTileInfos_2* pTileInfos, rapidjson::Document& doc);
+		static bool ParseMetaData(GLTFTileInfos_2* pTileInfos, rapidjson::Document& doc);
 
 		static void DealGLTFFilePath(GLTFImage& gltfImage, std::wstring strFilePath);
 #pragma endregion

@@ -2,6 +2,7 @@
 #define THREEDTILESPARSER_H__5D64F3B8_6A6C_4023_AB97_3F7733A44AB9__INCLUDED_
 
 #pragma once
+#include "s3m/include/MemoryStream.h"
 #include "stdafx.h"
 #include "BoundingSphere.h"
 #include "Common.h"
@@ -75,6 +76,18 @@ namespace S3MB
 		void SetBufferSize(unsigned int nSize);
 		unsigned int GetBufferSize() const;
 
+		bool GetCreateNewPaged() { return m_bCreateNewPaged; }
+		void SetCreateNewPaged(bool bCreate) { m_bCreateNewPaged = bCreate; }
+
+		static rapidjson::Document ParseBuffer(void* pBuffer, unsigned int nLength);
+		static void GetPropType(std::string strCompType, std::string strType, PropComponentType& eComponentType, PropType& eType, unsigned& nDim);
+		void ParseIDRangeFromB3DM(S3MB::MemoryStream& stream);
+		void ParseIDRangeFromI3DM(S3MB::MemoryStream& stream);
+		void ParseIDRangeFromGLB(S3MB::MemoryStream& stream);
+
+		//保存属性
+		void ReadFieldInfos(GLTFTileInfos_2 * pGltf, GLTFSchemaClass& schemaClass, GLTFPropertyTable& propTable);
+
 		const I3DMIDInfo& GetI3DMInfo() const;
 
 		void AddAttributeIndexInfo(const std::wstring& strKey, GLTFAttributeIndexInfo& info);
@@ -94,6 +107,7 @@ namespace S3MB
 
 		GLTFTileInfos_1* ParseGLTF_V1(unsigned char*& pBuffer, unsigned int jsonLength, std::wstring strOutputDir);
 		GLTFTileInfos_2* ParseGLTF(GLTFTreeNode* pNode, unsigned char*& buffer, unsigned int jsonLength, std::wstring strOutDir);
+		GLTFTileInfos_2* ParseGLTF(GLTFTreeNode* pNode, std::wstring strGltfPath);
 
 	private:
 		//! \brief 解析root
@@ -123,9 +137,12 @@ namespace S3MB
 		Point3D m_posExtract;
 		//! \brief 数据的包围盒
 		BoundingSphere m_boundingSphere;
+		//是否新建Paged
+		bool m_bCreateNewPaged;
 		//! \brief 属性
 		std::map<std::wstring, int> m_mapFieldIndex;
 		std::vector<S3MBFieldInfo> m_vecFieldInfo;
+		std::vector<PropInfo> m_vecPropInfo;
 		S3MBFieldInfos m_fieldInfos;
 		std::vector<Feature*> m_vecFeature;
 		// 替换还是追加模式

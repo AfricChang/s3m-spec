@@ -1035,31 +1035,58 @@ namespace S3MB
 		writer.WriteFile(strOutPath);
 		writer.Clear();
 
-		if (m_3DTilesParams.GetIsModel())
+//		auto GetIDMinMax = [](auto self, int& IDMin, int& IDMax, GLTFTreeNode* pNode)-> bool {
+//			bool bValidIDRange = false;
+//			for (unsigned int i = 0; i < pNode->m_vecChildNode.size(); i++)
+//			{
+//				bValidIDRange |= self(self, IDMin, IDMax, pNode->m_vecChildNode[i]);
+//				std::pair<unsigned int, unsigned int> IdRange = pNode->m_vecChildNode[i]->m_pairIDRange;
+//				if (IdRange.first == 0 || IdRange.second == 0)
+//				{
+//					continue;
+//				}
+
+//				bValidIDRange = true;
+//				if (i == 0)
+//				{
+//					IDMin = IdRange.first;
+//					IDMax = IdRange.second;
+//				}
+//				else
+//				{
+//					IDMin = IDMin < IdRange.first ? IDMin : IdRange.first;
+//					IDMax = IDMax > IdRange.second ? IDMax : IdRange.second;
+//				}
+
+//			}
+//			return bValidIDRange;
+//		};
+
+		if (m_3DTilesParams.GetIsModel() && pNode->m_pParentNode == nullptr)
 		{//写入属性相关
 			bool bValidIDRange = false;
 			int IDMin = 0, IDMax = 0;
-			for (unsigned int i = 0; i < pNode->m_vecChildNode.size(); i++)
-			{
-				
-				std::pair<unsigned int, unsigned int> IdRange = pNode->m_vecChildNode[i]->m_pairIDRange;
-				if (IdRange.first == 0 || IdRange.second == 0)
-				{
-					continue;
-				}
-
-				bValidIDRange = true;
-				if (i == 0)
-				{
-					IDMin = IdRange.first;
-					IDMax = IdRange.second;
-				}
-				else
-				{
-					IDMin = IDMin < IdRange.first ? IDMin : IdRange.first;
-					IDMax = IDMax > IdRange.second ? IDMax : IdRange.second;
-				}
-			}
+			//for (unsigned int i = 0; i < pNode->m_vecChildNode.size(); i++)
+			//{
+			//	
+			//	std::pair<unsigned int, unsigned int> IdRange = pNode->m_vecChildNode[i]->m_pairIDRange;
+			//	if (IdRange.first == 0 || IdRange.second == 0)
+			//	{
+			//		continue;
+			//	}
+			//	bValidIDRange = true;
+			//	if (i == 0)
+			//	{
+			//		IDMin = IdRange.first;
+			//		IDMax = IdRange.second;
+			//	}
+			//	else
+			//	{
+			//		IDMin = IDMin < IdRange.first ? IDMin : IdRange.first;
+			//		IDMax = IDMax > IdRange.second ? IDMax : IdRange.second;
+			//	}
+			//}
+            bValidIDRange = GetIDMinMax(IDMin, IDMax, pNode);
 			if (!bValidIDRange)
 			{
 				const std::vector<Feature*>& vecFeature = m_3DTilesParser.GetFeatures();
@@ -1074,7 +1101,7 @@ namespace S3MB
 				return;
 			}
 			const std::vector<Feature*>& vecFeature = m_3DTilesParser.GetFeatures();
-			std::wstring strAttrbuteFile = StringUtil::ChangeExt(strOutPath, U(".attribute"));
+			std::wstring strAttrbuteFile = StringUtil::ChangeExt(strOutPath, U(".s3md"));
 			std::map<unsigned int, std::pair<unsigned int, std::vector<Feature*> > > mapDatasetFeature;
 			mapDatasetFeature[IDMax] = std::pair<unsigned int, std::vector<Feature*>>(IDMin, vecFeature);
 			S3MBLayerInfos::WriteLayerAttributeValueToFile(mapDatasetFeature, strAttrbuteFile);
@@ -1088,10 +1115,10 @@ namespace S3MB
 			m_3DTilesParser.ClearFeatures();
 
 			GLTFTreeNode* pRootNode = pNode;
-			while (pRootNode->m_pParentNode != NULL)
-			{
-				pRootNode = pRootNode->m_pParentNode;
-			}
+			//while (pRootNode->m_pParentNode != NULL)
+			//{
+			//	pRootNode = pRootNode->m_pParentNode;
+			//}
 			std::wstring strInputDir = StringUtil::GetDir(m_3DTilesParams.GetTilesetPath());
 			std::wstring strOutputDir = m_3DTilesParams.GetOutputDir();
 
@@ -1106,6 +1133,33 @@ namespace S3MB
 			m_3DTilesParser.AddAttributeIndexInfo(strFile, attInfo);
 		}
 	}
+    bool ProcessTools::GetIDMinMax(int& IDMin, int& IDMax, GLTFTreeNode* pNode)
+    {
+        bool bValidIDRange = false;
+        for (unsigned int i = 0; i < pNode->m_vecChildNode.size(); i++)
+        {
+            bValidIDRange |= GetIDMinMax(IDMin, IDMax, pNode->m_vecChildNode[i]);
+            std::pair<unsigned int, unsigned int> IdRange = pNode->m_vecChildNode[i]->m_pairIDRange;
+            if (IdRange.first == 0 || IdRange.second == 0)
+            {
+                continue;
+            }
+
+            bValidIDRange = true;
+            if (i == 0)
+            {
+                IDMin = IdRange.first;
+                IDMax = IdRange.second;
+            }
+            else
+            {
+                IDMin = IDMin < IdRange.first ? IDMin : IdRange.first;
+                IDMax = IDMax > IdRange.second ? IDMax : IdRange.second;
+            }
+
+        }
+        return bValidIDRange;
+    }
 
 	bool ProcessTools::SaveSCPFile(const Point3D& pos, const BoundingBox& box, std::vector<std::wstring> vecRootFile, std::vector<BoundingBox> vecRootBox, std::wstring strOutputDir)
 	{
@@ -1226,8 +1280,6 @@ namespace S3MB
 		BoundingSphere boundingSphereTotal;
 		BoundingBox boundingBox;
 
-		m_3DTilesParser.ResetFieldInfos();
-
 		std::vector<GLTFTreeNode*> vecAllNode;
 		const std::vector<GLTFTreeNode*>& vecGLTFNode = m_3DTilesParser.GetGLTFNodes();
 		for (unsigned int i = 0; i < vecGLTFNode.size(); i++)
@@ -1254,6 +1306,7 @@ namespace S3MB
 			GetNodes(pNode, vecAllNode);
 		}
 
+		m_3DTilesParser.ResetFieldInfos();
 		// 所有节点单独处理
 		for (unsigned int i = 0; i < vecAllNode.size(); i++)
 		{
@@ -1317,11 +1370,11 @@ namespace S3MB
 			return;
 		}
 
-		vecNodes.push_back(pNode);
 		for (unsigned int i = 0; i < pNode->m_vecChildNode.size(); i++)
 		{
 			GetNodes(pNode->m_vecChildNode[i], vecNodes);
 		}
+		vecNodes.push_back(pNode);
 	}
 
 	void ProcessTools::ProcessTreeNode(GLTFTreeNode* pNode, std::wstring strInputDir, std::wstring strOutputDir)
@@ -1345,7 +1398,13 @@ namespace S3MB
 			GLTFTreeNode* pChildNode = vecChildNode[i];
 			if (pChildNode != nullptr && pChildNode->m_bFileFind)
 			{
+				m_3DTilesParser.SetCreateNewPaged(true);
 				ProcessNode(pChildNode, strInputDir, strOutputDir, pGroup, strParentPath);
+				for (int iFile = 1; iFile < pChildNode->m_vecFile.size(); iFile++)
+				{//multiContent
+					pChildNode->m_strFile = pChildNode->m_vecFile[iFile];
+					ProcessNode(pChildNode, strInputDir, strOutputDir, pGroup, strParentPath);
+				}
 				bChildFileExist = true;
 			}
 		}
@@ -1364,45 +1423,42 @@ namespace S3MB
 		strOutputDir = StringUtil::GetAbsolutePath(strOutputDir, StringUtil::GetRelativePath(strInputDir, pNode->m_strParentDir));
 		std::wstring strOutFile = StringUtil::GetAbsolutePath(strOutputDir, pNode->m_strFile);
 		std::wstring strFile = StringUtil::GetAbsolutePath(pNode->m_strParentDir, pNode->m_strFile);
-		
-#ifdef WIN32
-		std::ifstream ifs(strFile, ios::in | ios::binary);
-#else
-		string filePath = StringUtil::UnicodeToANSI(strFile);
-		std::ifstream ifs(filePath, ios::in | ios::binary);
-#endif
-		if (!ifs)
+
+		auto strExt = StringUtil::GetExt(strFile);
+		if (StringUtil::CompareNoCase(strExt, U(".gltf")))
 		{
+			GLTFTileInfos_2* pTileInfos = m_3DTilesParser.ParseGLTF(pNode, strFile);
+			if (pTileInfos != nullptr)
+			{
+				Point3D pntRtcCenter(pTileInfos->m_vCesuimRTC.x, pTileInfos->m_vCesuimRTC.y, pTileInfos->m_vCesuimRTC.z);
+				MeshToGroup(pNode, pTileInfos, strOutFile, pGroup, strParentPath, pntRtcCenter);
+				delete pTileInfos;
+				pTileInfos = nullptr;
+			}
 			return;
 		}
-		ifs.seekg(0, ios::end);
-		int size = ifs.tellg();
-		ifs.seekg(0, ios::beg);
-		char* buffer = new char[size];
-		ifs.read(buffer, size);
-		ifs.close();
 
 		MemoryStream stream;
-		stream.Init(buffer, size);
-
+		ReadFileDataToStream(strFile, stream);
+		int size = stream.GetLength();
 		m_3DTilesParser.SetBufferSize(size);
 
-		TileContentType nContentType = ParseTileContentType(stream);
-		if (nContentType == TileContentType::TC_CMPT)
+		TileContentType eContentType = ParseTileContentType(stream);
+		switch (eContentType)
 		{
-			ParseCMPT(stream, pNode, strOutFile, pGroup, strParentPath);
-		}
-		else if (nContentType == TileContentType::TC_B3DM)
-		{
+		case TC_B3DM:
 			ParseB3DM(stream, pNode, strOutFile, pGroup, strParentPath);
-		}
-		else if (nContentType == TileContentType::TC_I3DM)
-		{
+			break;
+		case TC_CMPT:
+			ParseCMPT(stream, pNode, strOutFile, pGroup, strParentPath);
+			break;
+		case TC_I3DM:
 			ParseI3DM(stream, pNode, strOutFile, pGroup, strParentPath);
+			break;
+		case TC_GLB:
+			ParseGLB(stream, pNode, strOutFile, pGroup, strParentPath, Vector3d());
+			break;
 		}
-
-		delete[] buffer;
-		buffer = nullptr;
 	}
 
 	bool ProcessTools::ParseCMPT(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutputPath, RenderOperationGroup* pGroup, std::wstring strParentPath)
@@ -1454,7 +1510,7 @@ namespace S3MB
 		unsigned int nFeatureTableLength, nFeatureBinLength, nBatchTableLength, nBatchBinLength;
 		stream >> nFeatureTableLength >> nFeatureBinLength >> nBatchTableLength >> nBatchBinLength;
 		nOffset += 28;
-		Point3D pntCenter;
+		Vector3d pntCenter;
 		unsigned int nBatchSize = 0;
 #pragma region 兼容以前版本B3DM
 		if (nBatchTableLength >= 570425344)
@@ -1538,177 +1594,7 @@ namespace S3MB
 				if (nBatchTableLength > 0 && nBatchSize > 0)
 				{
 					rapidjson::Document docBatch = ParseBuffer(pBatchJson, nBatchTableLength);
-					for (int i = 0; i < vecFeature.size(); i++)
-					{
-						S3MBFieldInfos fieldInfos = m_3DTilesParser.GetFieldInfos();
-						vecFeature[i]->SetFieldInfos(fieldInfos);
-					}
-					for (auto itor = docBatch.MemberBegin(); itor != docBatch.MemberEnd(); itor++)
-					{
-						auto key = (itor->name).GetString();
-						std::wstring strKey = StringUtil::UTF8_to_UNICODE(key);
-						rapidjson::Value& member = docBatch[key];
-						if (member.IsArray())
-						{
-							for (int i = 0; i < member.Size(); i++)
-							{
-								std::wstring strValue;
-								if (member[i].IsNull())
-								{
-									strValue = U("null");
-								}
-								else if (member[i].IsString())
-								{
-									strValue = StringUtil::UTF8_to_UNICODE(member[i].GetString());
-								}
-								else if (member[i].IsFloat())
-								{
-#ifdef WIN32
-                                    strValue = StringUtil::Format(U("%f"), member[i].GetFloat());
-#else
-                                    strValue = StringUtil::Format(U("%f").c_str(), member[i].GetFloat());
-#endif
-								}
-								else if (member[i].IsInt())
-								{
-#ifdef WIN32
-                                    strValue = StringUtil::Format(U("%d"), member[i].GetInt());
-#else
-                                    strValue = StringUtil::Format(U("%d").c_str(), member[i].GetInt());
-#endif
-								}
-								else if (member[i].IsBool())
-								{
-									strValue = (member[i].GetBool() ? U("True") : U("False"));
-								}
-
-								vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						else
-						{
-							unsigned int nByteOffset = member["byteOffset"].GetUint();
-
-							std::string	strCompType = member["componentType"].GetString();
-							std::string strType = member["type"].GetString();
-							FieldType nType = GetFieldType(strCompType);
-							int nDim = NumOfComponents(strType);
-
-							switch (nType)
-							{
-							case FT_Byte:
-							{
-								for (unsigned int i = 0; i < nBatchSize; i++)
-								{
-									std::wstring strValue;
-									for (int iDim = 0; iDim < nDim; iDim++)
-									{
-										std::wstring strPart;
-										unsigned char nByte = (unsigned char)pBatchBin[nByteOffset + i * nDim + iDim];
-#ifdef WIN32
-                                        strPart = StringUtil::Format(U("%d"), nByte);
-#else
-                                        strPart = StringUtil::Format(U("%d").c_str(), nByte);
-#endif
-										if (iDim != 0)
-										{
-											strPart = U(",") + strPart;
-										}
-										strValue += strPart;
-									}
-									vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-								}
-							}
-							break;
-							case FT_INT16:
-							{
-								short* pBinOffset = (short*)(pBatchBin + nByteOffset);
-								for (unsigned int i = 0; i < nBatchSize; i++)
-								{
-									std::wstring strValue;
-									for (int iDim = 0; iDim < nDim; iDim++)
-									{
-										std::wstring strPart;
-										short nValue = pBinOffset[i * nDim + iDim];
-										strPart = StringUtil::Format(L"%d", nValue);
-										if (iDim != 0)
-										{
-											strPart = L"," + strPart;
-										}
-										strValue += strPart;
-									}
-									vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-								}
-							}
-							break;
-							case FT_INT32:
-							{
-								int* pBinOffset = (int*)(pBatchBin + nByteOffset);
-								for (unsigned int i = 0; i < nBatchSize; i++)
-								{
-									std::wstring strValue;
-									for (int iDim = 0; iDim < nDim; iDim++)
-									{
-										std::wstring strPart;
-										int nValue = pBinOffset[i * nDim + iDim];
-										strPart = StringUtil::Format(L"%d", nValue);
-										if (iDim != 0)
-										{
-											strPart = L"," + strPart;
-										}
-										strValue += strPart;
-									}
-									vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-								}
-							}
-							break;
-							case FT_Float:
-							{
-								float* pBinOffset = (float*)(pBatchBin + nByteOffset);
-								for (unsigned int i = 0; i < nBatchSize; i++)
-								{
-									std::wstring strValue;
-									for (int iDim = 0; iDim < nDim; iDim++)
-									{
-										std::wstring strPart;
-										float fValue = pBinOffset[i * nDim + iDim];
-										strPart = StringUtil::Format(L"%f", fValue);
-										if (iDim != 0)
-										{
-											strPart = L"," + strPart;
-										}
-										strValue += strPart;
-									}
-									vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-								}
-							}
-							break;
-							case FT_Double:
-							{
-								double* pBinOffset = (double*)(pBatchBin + nByteOffset);
-								for (unsigned int i = 0; i < nBatchSize; i++)
-								{
-									std::wstring strValue;
-									for (int iDim = 0; iDim < nDim; iDim++)
-									{
-										std::wstring strPart;
-										double dValue = pBinOffset[i * nDim + iDim];
-										strPart = StringUtil::Format(L"%f", dValue);
-										if (iDim != 0)
-										{
-											strPart = L"," + strPart;
-										}
-										strValue += strPart;
-									}
-									vecFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-								}
-							}
-							break;
-							default:
-								break;
-							}
-						}
-					}
+					ReadFieldInfos(vecFeature, docBatch, pBatchBin, nBatchSize);
 				}
 
 				for (int i = 0; i < vecFeature.size(); i++)
@@ -1730,47 +1616,7 @@ namespace S3MB
 
 		unsigned int nStartGltfOffset = nOffset + nFeatureBinLength + nFeatureTableLength + nBatchTableLength + nBatchBinLength;
 		stream.SetReadPosition(nStartGltfOffset);
-
-		unsigned char gltfHead[4];
-		stream >> gltfHead[0] >> gltfHead[1] >> gltfHead[2] >> gltfHead[3];
-
-		unsigned int nGltfVersion, nGLTFTotal, nJsonLenth, nJson;
-		stream >> nGltfVersion >> nGLTFTotal >> nJsonLenth >> nJson;
-
-		nStartGltfOffset = nStartGltfOffset + 20;
-
-		unsigned char* pBuffer = stream.GetDataPtr() + nStartGltfOffset;
-		unsigned int nBufferSize = m_3DTilesParser.GetBufferSize();
-		m_3DTilesParser.SetBufferSize(nBufferSize - nStartGltfOffset);
-		if (nJsonLenth > 0)
-		{
-			nBufferSize = m_3DTilesParser.GetBufferSize();
-			m_3DTilesParser.SetBufferSize(nBufferSize - nJsonLenth);
-			if (EQUAL(nGltfVersion, 2.0))
-			{
-				GLTFTileInfos_2* pTileInfos = m_3DTilesParser.ParseGLTF(pNode, pBuffer, nJsonLenth, strOutputPath);
-				if (pTileInfos != nullptr)
-				{
-					Point3D pntRtcCenter(pntCenter.x + pTileInfos->m_vCesuimRTC.x, pntCenter.y + pTileInfos->m_vCesuimRTC.y, pntCenter.z + pTileInfos->m_vCesuimRTC.z);
-					MeshToGroup(pNode, pTileInfos, strOutputPath, pGroup, strParentPath, pntRtcCenter);
-					delete pTileInfos;
-					pTileInfos = nullptr;
-				}
-			}
-			else if (EQUAL(nGltfVersion, 1.0))
-			{
-				GLTFTileInfos_1* pTileInfos = m_3DTilesParser.ParseGLTF_V1(pBuffer, nJsonLenth, strOutputPath);
-				if (pTileInfos != nullptr)
-				{
-					Point3D pntRtcCenter(pntCenter.x + pTileInfos->m_vCesuimRTC.x, pntCenter.y + pTileInfos->m_vCesuimRTC.y, pntCenter.z + pTileInfos->m_vCesuimRTC.z);
-					MeshToGroup(pNode, pTileInfos, strOutputPath, pGroup, strParentPath, pntRtcCenter);
-					delete pTileInfos;
-					pTileInfos = nullptr;
-				}
-			}
-			m_3DTilesParser.Clear();
-		}
-
+		ParseGLB(stream, pNode, strOutputPath, pGroup, strParentPath, pntCenter);
 		return true;
 	}
 
@@ -1855,180 +1701,7 @@ namespace S3MB
 			if (nInstanceSize > 0 && nBatchTableLength > 0)
 			{
 				rapidjson::Document docBatch = ParseBuffer(pBatchJson, nBatchTableLength);
-				
-				for (int i = 0; i < arrFeature.size(); i++)
-				{
-					S3MBFieldInfos fieldInfos = m_3DTilesParser.GetFieldInfos();
-					arrFeature[i]->SetFieldInfos(fieldInfos);
-				}
-
-				for (auto itor = docBatch.MemberBegin(); itor != docBatch.MemberEnd(); itor++)
-				{
-					auto key = (itor->name).GetString();
-					std::wstring strKey = StringUtil::UTF8_to_UNICODE(key);
-					rapidjson::Value& member = docBatch[key];
-
-					if (member.IsArray())
-					{
-						for (int i = 0; i < member.Size(); i++)
-						{
-							std::wstring strValue;
-							if (member[i].IsNull())
-							{
-								strValue = U("null");
-							}
-							else if (member[i].IsString())
-							{
-								strValue = StringUtil::UTF8_to_UNICODE(member[i].GetString());
-							}
-							else if (member[i].IsFloat())
-							{
-#ifdef WIN32
-								strValue = StringUtil::Format(U("%f"), member[i].GetFloat());
-#else
-								strValue = StringUtil::Format(U("%f").c_str(), member[i].GetFloat());
-#endif
-							}
-							else if (member[i].IsInt())
-							{
-#ifdef WIN32
-								strValue = StringUtil::Format(U("%d"), member[i].GetInt());
-#else
-                                strValue = StringUtil::Format(U("%d").c_str(), member[i].GetInt());
-#endif
-							}
-							else if (member[i].IsBool())
-							{
-								strValue = (member[i].GetBool() ? U("True") : U("False"));
-							}
-
-							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-						}
-					}
-					else
-					{
-						unsigned int nByteOffset = member["byteOffset"].GetUint();
-
-						std::string	strCompType = member["componentType"].GetString();
-						std::string strType = member["type"].GetString();
-						FieldType nType = GetFieldType(strCompType);
-						int nDim = NumOfComponents(strType);
-
-						switch (nType)
-						{
-						case FT_Byte:
-						{
-							for (unsigned int i = 0; i < nInstanceSize; i++)
-							{
-								std::wstring strValue;
-								for (int iDim = 0; iDim < nDim; iDim++)
-								{
-									std::wstring strPart;
-									unsigned char nByte = (unsigned char)pBatchBin[nByteOffset + i * nDim + iDim];
-#ifdef WIN32
-									strPart = StringUtil::Format(U("%d"), nByte);
-#else
-									strPart = StringUtil::Format(U("%d").c_str(), nByte);
-#endif
-									if (iDim != 0)
-									{
-										strPart = U(",") + strPart;
-									}
-									strValue += strPart;
-								}
-								arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						break;
-						case FT_INT16:
-						{
-							short* pBinOffset = (short*)(pBatchBin + nByteOffset);
-							for (unsigned int i = 0; i < nInstanceSize; i++)
-							{
-								std::wstring strValue;
-								for (int iDim = 0; iDim < nDim; iDim++)
-								{
-									std::wstring strPart;
-									short nValue = pBinOffset[i * nDim + iDim];
-									strPart = StringUtil::Format(L"%d", nValue);
-									if (iDim != 0)
-									{
-										strPart = L"," + strPart;
-									}
-									strValue += strPart;
-								}
-								arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						break;
-						case FT_INT32:
-						{
-							int* pBinOffset = (int*)(pBatchBin + nByteOffset);
-							for (unsigned int i = 0; i < nInstanceSize; i++)
-							{
-								std::wstring strValue;
-								for (int iDim = 0; iDim < nDim; iDim++)
-								{
-									std::wstring strPart;
-									int nValue = pBinOffset[i * nDim + iDim];
-									strPart = StringUtil::Format(L"%d", nValue);
-									if (iDim != 0)
-									{
-										strPart = L"," + strPart;
-									}
-									strValue += strPart;
-								}
-								arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						break;
-						case FT_Float:
-						{
-							float* pBinOffset = (float*)(pBatchBin + nByteOffset);
-							for (unsigned int i = 0; i < nInstanceSize; i++)
-							{
-								std::wstring strValue;
-								for (int iDim = 0; iDim < nDim; iDim++)
-								{
-									std::wstring strPart;
-									float fValue = pBinOffset[i * nDim + iDim];
-									strPart = StringUtil::Format(L"%f", fValue);
-									if (iDim != 0)
-									{
-										strPart = L"," + strPart;
-									}
-									strValue += strPart;
-								}
-								arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						break;
-						case FT_Double:
-						{
-							double* pBinOffset = (double*)(pBatchBin + nByteOffset);
-							for (unsigned int i = 0; i < nInstanceSize; i++)
-							{
-								std::wstring strValue;
-								for (int iDim = 0; iDim < nDim; iDim++)
-								{
-									std::wstring strPart;
-									double dValue = pBinOffset[i * nDim + iDim];
-									strPart = StringUtil::Format(L"%f", dValue);
-									if (iDim != 0)
-									{
-										strPart = L"," + strPart;
-									}
-									strValue += strPart;
-								}
-								arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
-							}
-						}
-						break;
-						default:
-							break;
-						}
-					}
-				}
+				ReadFieldInfos(arrFeature, docBatch, pBatchBin, nInstanceSize);
 			}
 
 			for (int i = 0; i < arrFeature.size(); i++)
@@ -2056,14 +1729,20 @@ namespace S3MB
 		unsigned int nStartGltfOffset = nOffset + nFeatureBinLength + nFeatureTableLength + nBatchTableLength + nBatchBinLength;
 
 		stream.SetReadPosition(nStartGltfOffset);
+		ParseGLB(stream, pNode, strOutDir, pGroup, strFatherFileName, ptTileCenter);
+		return true;
+	}
 
+	bool ProcessTools::ParseGLB(MemoryStream& stream, GLTFTreeNode* pNode, std::wstring strOutDir, RenderOperationGroup* pGroup, std::wstring strFatherFileName, Vector3d ptTileCenter)
+	{
+		unsigned int nOffset = stream.GetReadPosition();
 		unsigned char gltfHead[4];
 		stream >> gltfHead[0] >> gltfHead[1] >> gltfHead[2] >> gltfHead[3];
 
 		unsigned int nGltfVersion, nGLTFTotal, nJsonLenth, nJson;
 		stream >> nGltfVersion >> nGLTFTotal >> nJsonLenth >> nJson;
 
-		nStartGltfOffset = nStartGltfOffset + 20;
+		unsigned nStartGltfOffset = nOffset + 20;
 
 		unsigned char* pBuffer = stream.GetDataPtr() + nStartGltfOffset;
 		unsigned int nBufferSize = m_3DTilesParser.GetBufferSize();
@@ -2081,6 +1760,7 @@ namespace S3MB
 					MeshToGroup(pNode, pTileInfos, strOutDir, pGroup, strFatherFileName, pntRtcCenter);
 					delete pTileInfos;
 					pTileInfos = nullptr;
+					return true;
 				}
 			}
 			else if (EQUAL(nGltfVersion, 1.0))
@@ -2092,12 +1772,406 @@ namespace S3MB
 					MeshToGroup(pNode, pTileInfos, strOutDir, pGroup, strFatherFileName, pntRtcCenter);
 					delete pTileInfos;
 					pTileInfos = nullptr;
+					return true;
 				}
 			}
 			m_3DTilesParser.Clear();
 		}
+		return false;
+	}
 
-		return true;
+	void ProcessTools::ReadFieldInfos(std::vector<Feature*> arrFeature, rapidjson::Document & docBatch, unsigned char* pBatchBin, unsigned nBatchSize)
+	{
+		for (int i = 0; i < arrFeature.size(); i++)
+		{
+			S3MBFieldInfos fieldInfos = m_3DTilesParser.GetFieldInfos();
+			arrFeature[i]->SetFieldInfos(fieldInfos);
+		}
+
+		for (auto itor = docBatch.MemberBegin(); itor != docBatch.MemberEnd(); itor++)
+		{
+			auto key = (itor->name).GetString();
+			std::wstring strKey = StringUtil::UTF8_to_UNICODE(key);
+			rapidjson::Value& member = docBatch[key];
+
+			if (member.IsArray())
+			{
+				for (int i = 0; i < member.Size(); i++)
+				{
+					if (i == arrFeature.size())
+					{
+						break;
+					}
+					std::wstring strValue;
+					if (member[i].IsNull())
+					{
+						strValue = U("null");
+					}
+					else if (member[i].IsString())
+					{
+						strValue = StringUtil::UTF8_to_UNICODE(member[i].GetString());
+					}
+					else if (member[i].IsFloat())
+					{
+#ifdef WIN32
+						strValue = StringUtil::Format(U("%f"), member[i].GetFloat());
+#else
+						strValue = StringUtil::Format(U("%f").c_str(), member[i].GetFloat());
+#endif
+					}
+					else if (member[i].IsInt())
+					{
+#ifdef WIN32
+						strValue = StringUtil::Format(U("%d"), member[i].GetInt());
+#else
+						strValue = StringUtil::Format(U("%d").c_str(), member[i].GetInt());
+#endif
+					}
+					else if (member[i].IsBool())
+					{
+						strValue = (member[i].GetBool() ? U("True") : U("False"));
+					}
+
+					arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+				}
+			}
+			else
+			{
+				unsigned int nByteOffset = member["byteOffset"].GetUint();
+
+				std::string	strCompType = member["componentType"].GetString();
+				std::string strType = member["type"].GetString();
+				PropComponentType eComponentType = PropComponentType::UNKNOWN_TYPE;
+				PropType eType = PropType::UNKNOWNTYPE;
+				unsigned nDim = 0;
+				m_3DTilesParser.GetPropType(strCompType, strType, eComponentType, eType, nDim);
+				//FieldType nType = GetFieldType(strCompType);
+				//int nDim = NumOfComponents(strType);
+				switch (eComponentType)
+				{
+				case PropComponentType::INT8:
+				{
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							char nByte = ((char*)pBatchBin)[nByteOffset + i];
+							arrFeature[i]->SetValue(strKey, (short)nByte);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								char nByte = ((char*)pBatchBin)[nByteOffset + i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%d", nByte);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::UINT8:
+				{
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							unsigned char nByte = (unsigned char)pBatchBin[nByteOffset + i];
+							arrFeature[i]->SetValue(strKey, nByte);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								unsigned char nByte = (unsigned char)pBatchBin[nByteOffset + i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%d", nByte);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::INT16:
+				{
+					short* pBinOffset = (short*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							short nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								short nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%d", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::UINT16:
+				{
+					unsigned short* pBinOffset = (unsigned short*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							unsigned short nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, (int)nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								int nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%d", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::INT32:
+				{
+					int* pBinOffset = (int*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							int nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								int nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%d", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::UINT32:
+				{
+					unsigned* pBinOffset = (unsigned*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							unsigned nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, (long long)nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								unsigned nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%u", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::INT64:
+				{
+					long long* pBinOffset = (long long*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							long long nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								long long nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%lld", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::UINT64:
+				{
+					unsigned long long* pBinOffset = (unsigned long long*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							unsigned long long nValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, (long long)nValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								long long nValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%llu", nValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::FLOAT32:
+				{
+					float* pBinOffset = (float*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							float fValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, fValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								float fValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%f", fValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				case PropComponentType::FLOAT64:
+				{
+					double* pBinOffset = (double*)(pBatchBin + nByteOffset);
+					if (nDim == 1)
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							double dValue = pBinOffset[i];
+							arrFeature[i]->SetValue(strKey, dValue);
+						}
+					}
+					else
+					{
+						for (unsigned i = 0; i < nBatchSize; i++)
+						{
+							std::wstring strValue = L"";
+							for (int iDim = 0; iDim < nDim; iDim++)
+							{
+								std::wstring strValuePart;
+								double dValue = pBinOffset[i * nDim + iDim];
+								strValuePart = StringUtil::Format(L"%f", dValue);
+								if (iDim != 0)
+								{
+									strValuePart = L"," + strValuePart;
+								}
+								strValue += strValuePart;
+							}
+							arrFeature[i]->SetValue(strKey, StringUtil::UNICODE_to_UTF8(strValue));
+						}
+					}
+				}
+				break;
+				default:
+					break;
+				}
+			}
+		}
 	}
 
 	void ProcessTools::ParseIDRange(GLTFTreeNode* pNode)
@@ -2147,6 +2221,10 @@ namespace S3MB
 			{
 				ParseIDRangeFromI3DM(stream);
 			}
+			else if (head[0] == 'g'  && head[1] == 'l' && head[2] == 'T' && head[3] == 'F')
+			{
+				ParseIDRangeFromGLB(stream);
+			}
 			if (nIdOffset < m_3DTilesParser.GetBatchIDNum())
 			{
 				pNode->m_vecChildNode[i]->m_pairIDRange = std::make_pair(nIdOffset + 1, m_3DTilesParser.GetBatchIDNum());
@@ -2160,36 +2238,7 @@ namespace S3MB
 
 	void ProcessTools::ParseIDRangeFromB3DM(MemoryStream& stream)
 	{
-		unsigned int nOffset = stream.GetReadPosition();
-		unsigned char head[4];
-		stream >> head[0] >> head[1] >> head[2] >> head[3];
-		if (!(head[0] == 'b'  && head[1] == '3' && head[2] == 'd' && head[3] == 'm'))
-		{
-			return;
-		}
-		unsigned int nVersion, nTotalLenth;
-		stream >> nVersion >> nTotalLenth;
-		unsigned int nFeatureTableLength, nFeatureBinLength, nBatchTableLength, nBatchBinLength;
-		stream >> nFeatureTableLength >> nFeatureBinLength >> nBatchTableLength
-			>> nBatchBinLength;
-		nOffset += 28;
-		Vector3d ptTileCenter;
-		unsigned int nBatchSize = 0;
-		if (!(nBatchTableLength >= 570425344 || nBatchBinLength >= 570425344) && nFeatureTableLength > 0)
-		{
-			unsigned char* pFeatureJson = new unsigned char[nFeatureTableLength];
-			stream.Load(pFeatureJson, nFeatureTableLength);
-
-			rapidjson::Document docFeature = ParseBuffer(pFeatureJson, nFeatureTableLength);
-
-			rapidjson::Value & vBS = docFeature["BATCH_LENGTH"];
-			nBatchSize = vBS.GetUint();
-			if (nBatchSize > 0)
-			{
-				unsigned int nBatchIDNum = m_3DTilesParser.GetBatchIDNum();
-				m_3DTilesParser.SetBatchIDNum(nBatchIDNum + nBatchSize);
-			}
-		}
+		m_3DTilesParser.ParseIDRangeFromB3DM(stream);
 	}
 
 	void ProcessTools::ParseIDRangeFromCMPT(MemoryStream& stream)
@@ -2227,37 +2276,12 @@ namespace S3MB
 
 	void ProcessTools::ParseIDRangeFromI3DM(MemoryStream& stream)
 	{
-		unsigned int nOffset = stream.GetReadPosition();
-		unsigned char head[4];
-		stream >> head[0] >> head[1] >> head[2] >> head[3];
-		if (!(head[0] == 'i'  && head[1] == '3' && head[2] == 'd' && head[3] == 'm'))
-		{
-			return;
-		}
-		unsigned int nVersion, nTotalLenth;
-		stream >> nVersion >> nTotalLenth;
-		unsigned int nFeatureTableLength, nFeatureBinLength, nBatchTableLength, nBatchBinLength, nGltfFormat;
-		stream >> nFeatureTableLength >> nFeatureBinLength >> nBatchTableLength >> nBatchBinLength >> nGltfFormat;
-		nOffset += 32;
-		Vector3d ptTileCenter;
-		unsigned int nInstanceSize = 0;
+		m_3DTilesParser.ParseIDRangeFromI3DM(stream);
+	}
 
-		unsigned char* pFeatureJson = new unsigned char[nFeatureTableLength];
-		stream.Load(pFeatureJson, nFeatureTableLength);
-
-		std::strstreambuf buf((char*)pFeatureJson, nFeatureTableLength);
-		std::istream ifs(&buf);
-		rapidjson::IStreamWrapper isw(ifs);
-		rapidjson::Document docFeature;
-		docFeature.ParseStream(isw);
-
-		rapidjson::Value & vIS = docFeature["INSTANCES_LENGTH"];
-		nInstanceSize = vIS.GetUint();
-		if (nInstanceSize > 0)
-		{
-			unsigned int nBatchIDNum = m_3DTilesParser.GetBatchIDNum();
-			m_3DTilesParser.SetBatchIDNum(nBatchIDNum + nInstanceSize);
-		}
+	void ProcessTools::ParseIDRangeFromGLB(MemoryStream& stream)
+	{
+		m_3DTilesParser.ParseIDRangeFromGLB(stream);
 	}
 
 	void ProcessTools::MeshToGroup(GLTFTreeNode * pNode, GLTFTileInfos_1 *& pTileInfos, std::wstring strOutputPath, RenderOperationGroup* pGroup, std::wstring strParentPath, Point3D& pntCenter)
@@ -2587,7 +2611,7 @@ namespace S3MB
 		std::map<std::wstring, TextureDataInfo*>& mapTexture = pGroup->GetTextureData();
 
 		RenderOperationPagedLOD* pLOD = nullptr;
-		if (StringUtil::GetExt(strOutputPath) == U(".cmpt") && pGroup->GetNumChildren() > 0)
+		if (!m_3DTilesParser.GetCreateNewPaged() && pGroup->GetNumChildren() > 0)
 		{
 			pLOD = (RenderOperationPagedLOD*)(pGroup->GetChild(0));
 		}
@@ -2595,6 +2619,7 @@ namespace S3MB
 		{
 			pLOD = new RenderOperationPagedLOD();
 			pGroup->AddChild(pLOD);
+			m_3DTilesParser.SetCreateNewPaged(false);
 		}
 
 		pLOD->SetName(StringUtil::GetName(strParentPath));
@@ -2667,6 +2692,16 @@ namespace S3MB
 	{
 		const GLTFMesh& gltfMesh = pTileInfos->m_mapMeshs[nMeshIndex];
 		Matrix4d mat = pTileInfos->m_mapMeshToLocalView[nMeshIndex];
+		int nCount = 0;
+		if (m_3DTilesParams.GetIsModel())
+		{
+			for (int i = 0; i < pTileInfos->m_metaData.vecPropTable.size(); i++)
+			{
+				auto& propTable = pTileInfos->m_metaData.vecPropTable[i];
+				propTable.nBatchIDStart = pNode->m_pairIDRange.first + pNode->m_nCurrIDOffset;
+				nCount += propTable.nCount;
+			}
+		}
 
 		for (unsigned int i = 0; i < gltfMesh.m_vecGLTFPrimitive.size(); i++)
 		{
@@ -2709,7 +2744,10 @@ namespace S3MB
 
             pGeode->AddSkeleton(pSkeleton);
 		}
-
+		if (m_3DTilesParams.GetIsModel())
+		{
+			pNode->m_nCurrIDOffset += nCount;
+		}
 		if (mapSkeleton.size() == 0 && mapMaterial.size() == 0 && mapTexture.size() == 0)
 		{
 			return false;
@@ -2770,7 +2808,29 @@ namespace S3MB
 				gltfTexAccessor2 = pTileInfos->m_mapAccessors[gltfAttributes.m_nTex2Index];
 				pTexData2 = (float*)GLTFParser::GetAttributeData(pTileInfos, gltfAttributes.m_nTex2Index, nTexDim2);
 			}
+
+			//
+			float* pScale = nullptr;
+			GLTFAccessor gltfSacleAccessor;
+			int nScaleDim = 3;
+			if (gltfAttributes.m_nScale != -1)
+			{
+				gltfSacleAccessor = pTileInfos->m_mapAccessors[gltfAttributes.m_nScale];
+				pScale = (float*)GLTFParser::GetAttributeData(pTileInfos, gltfAttributes.m_nScale, nScaleDim);
+			}
+
+			//
+			float* pRotation = nullptr;
+			GLTFAccessor gltfRotationAccessor;
+			int nRotationDim = 4;
+			if (gltfAttributes.m_nRotation != -1)
+			{
+				gltfRotationAccessor = pTileInfos->m_mapAccessors[gltfAttributes.m_nRotation];
+				pRotation = (float*)GLTFParser::GetAttributeData(pTileInfos, gltfAttributes.m_nRotation, nRotationDim);
+			}
+
 			//-----------------------BatchId--------------------------------------------------
+			unsigned int nIDOffset = pNode->m_pairIDRange.first + pNode->m_nCurrIDOffset;
 			GLTFAccessor gltfBatchIdsAccessor;
 			unsigned int nBatchIdsCount = 0;
 			unsigned short* pUShortBatchIdsData = nullptr;
@@ -2778,10 +2838,27 @@ namespace S3MB
 			float* pfloatBatchIdData = nullptr;
 			unsigned char* pByteBatchIdData = nullptr;
 			int nBatchIdsDim = 1;
-			if (m_3DTilesParams.GetIsModel() && gltfAttributes.m_nBatchIds != -1)
+			if (m_3DTilesParams.GetIsModel())
 			{
-				gltfBatchIdsAccessor = pTileInfos->m_mapAccessors[gltfAttributes.m_nBatchIds];
-				nBatchIdsCount = gltfBatchIdsAccessor.m_nCount;
+				if (gltfAttributes.m_nBatchIds != -1)
+				{
+					gltfBatchIdsAccessor = pTileInfos->m_mapAccessors[gltfAttributes.m_nBatchIds];
+					nBatchIdsCount = gltfBatchIdsAccessor.m_nCount;
+				}
+				else if (gltfPrimitive.m_vecFeatureId.size() > 0)
+				{
+					GLTFFeatureId& featureId = gltfPrimitive.m_vecFeatureId[0];
+					GLTFPropertyTable& propTable = pTileInfos->m_metaData.vecPropTable[featureId.nPropertyTable];
+					if (propTable.bHandled == false)
+					{
+						m_3DTilesParser.ReadFieldInfos(pTileInfos, pTileInfos->m_metaData.mapSchemaClass[propTable.strClassName], propTable);
+						propTable.bHandled = true;
+					}
+					gltfBatchIdsAccessor = pTileInfos->m_mapAccessors[gltfAttributes.m_vecFeatureID[featureId.nAttribute]];
+					gltfAttributes.m_nBatchIds = gltfAttributes.m_vecFeatureID[featureId.nAttribute];
+					nBatchIdsCount = gltfBatchIdsAccessor.m_nCount;
+					//pNode->m_pairIDRange.first = propTable.nBatchIDStart;
+				}
 
 				if (gltfBatchIdsAccessor.m_nComponentType == 5122 || gltfBatchIdsAccessor.m_nComponentType == 5123)
 				{
@@ -2850,6 +2927,24 @@ namespace S3MB
 				m_3DTilesParser.ConvertPoint(pNode, pPosData, gltfPosAccessor.m_nCount, nPosDim, mat, pntCenter);
 			}
 
+			if (pScale != nullptr)
+			{
+				pDataPackage->m_vecVertexAttDataCount.push_back(gltfSacleAccessor.m_nCount);
+				pDataPackage->m_vecVertexAttDataDimension.push_back(3);
+				pDataPackage->m_vecVertexAttDataType.push_back(VertexAttributeType::AT_FLOAT);
+				pDataPackage->m_mapVertexAttributeDescript[U("GS_Scale")] = pDataPackage->m_nVertexAttCount++;
+				pDataPackage->m_vecVertexAttData.push_back(pScale);
+			}
+
+			if (pRotation != nullptr)
+			{
+				pDataPackage->m_vecVertexAttDataCount.push_back(gltfRotationAccessor.m_nCount);
+				pDataPackage->m_vecVertexAttDataDimension.push_back(4);
+				pDataPackage->m_vecVertexAttDataType.push_back(VertexAttributeType::AT_FLOAT);
+				pDataPackage->m_mapVertexAttributeDescript[U("GS_Rotation")] = pDataPackage->m_nVertexAttCount++;
+				pDataPackage->m_vecVertexAttData.push_back(pRotation);
+			}
+
 			if (pColorData != nullptr)
 			{
 				unsigned int* pColor = new unsigned int[gltfVecColor.m_nCount];
@@ -2896,7 +2991,7 @@ namespace S3MB
 			std::map<unsigned int, std::vector<BatchIDInfo*> > mapBatchInfo;
 			if (pUIntBatchIdsData != nullptr)
 			{
-				unsigned int nID = pUIntBatchIdsData[0] + pNode->m_pairIDRange.first;
+				unsigned int nID = pUIntBatchIdsData[0] + nIDOffset;
 				BatchIDInfo* pIDInfo = new BatchIDInfo;
 				pIDInfo->m_nCount = 0;
 				pIDInfo->m_nOffset = 0;
@@ -2907,7 +3002,7 @@ namespace S3MB
 
 				for (int i = 0; i < gltfBatchIdsAccessor.m_nCount; i++)
 				{
-					unsigned int nCurrentID = pUIntBatchIdsData[i] + pNode->m_pairIDRange.first;
+					unsigned int nCurrentID = pUIntBatchIdsData[i] + nIDOffset;
 					if (nCurrentID == nID)
 					{
 						pIDInfo->m_nCount++;
@@ -2936,7 +3031,7 @@ namespace S3MB
 			}
 			else if (pUShortBatchIdsData != nullptr)
 			{
-				unsigned int nID = pUShortBatchIdsData[0] + pNode->m_pairIDRange.first;
+				unsigned int nID = pUShortBatchIdsData[0] + nIDOffset;
 				BatchIDInfo* pIDInfo = new BatchIDInfo;
 				pIDInfo->m_nCount = 0;
 				pIDInfo->m_nOffset = 0;
@@ -2947,7 +3042,7 @@ namespace S3MB
 
 				for (int i = 0; i < gltfBatchIdsAccessor.m_nCount; i++)
 				{
-					unsigned int nCurrentID = pUShortBatchIdsData[i] + pNode->m_pairIDRange.first;
+					unsigned int nCurrentID = pUShortBatchIdsData[i] + nIDOffset;
 					if (nCurrentID == nID)
 					{
 						pIDInfo->m_nCount++;
@@ -2977,7 +3072,7 @@ namespace S3MB
 			}
 			else if (pByteBatchIdData != nullptr)
 			{
-				unsigned int nID = pByteBatchIdData[0] + pNode->m_pairIDRange.first;
+				unsigned int nID = pByteBatchIdData[0] + nIDOffset;
 				BatchIDInfo* pIDInfo = new BatchIDInfo;
 				pIDInfo->m_nCount = 0;
 				pIDInfo->m_nOffset = 0;
@@ -2988,7 +3083,7 @@ namespace S3MB
 
 				for (int i = 0; i < gltfBatchIdsAccessor.m_nCount; i++)
 				{
-					unsigned int nCurrentID = pByteBatchIdData[i] + pNode->m_pairIDRange.first;
+					unsigned int nCurrentID = pByteBatchIdData[i] + nIDOffset;
 					if (nCurrentID == nID)
 					{
 						pIDInfo->m_nCount++;
@@ -3018,7 +3113,7 @@ namespace S3MB
 			}
 			else if (pfloatBatchIdData != nullptr)
 			{
-				unsigned int nID = pfloatBatchIdData[0] + pNode->m_pairIDRange.first;
+				unsigned int nID = pfloatBatchIdData[0] + nIDOffset;
 				BatchIDInfo* pIDInfo = new BatchIDInfo;
 				pIDInfo->m_nCount = 0;
 				pIDInfo->m_nOffset = 0;
@@ -3029,7 +3124,7 @@ namespace S3MB
 
 				for (int i = 0; i < gltfBatchIdsAccessor.m_nCount; i++)
 				{
-					unsigned int nCurrentID = pfloatBatchIdData[i] + pNode->m_pairIDRange.first;
+					unsigned int nCurrentID = pfloatBatchIdData[i] + nIDOffset;
 					if (nCurrentID == nID)
 					{
 						pIDInfo->m_nCount++;
@@ -3146,7 +3241,132 @@ namespace S3MB
 		// 骨架数据做Draco压缩
 		else
 		{
-			//ToDo:
+			GLTFAttributes& gltfAttributes = gltfPrimitive.m_gltfAttributes;
+			GLTFDraco& gltfDraco = gltfPrimitive.m_gltfDraco;
+
+			VertexDataPackage* pDataPackage = NULL;
+			std::vector<IndexPackage*> arrIndexPackage;
+
+			if (true)
+			{
+				if (gltfDraco.m_nBufferViewIndex != -1)
+				{
+					// 保存缓存的时候做draco压缩
+					//DecodeDraco()
+					{
+						DracoCompressedInfo convertParams;
+						convertParams.m_posInfo.SetUniqueID(gltfDraco.m_nPosAttributeIndex);
+						convertParams.m_colorInfo.SetUniqueID(gltfDraco.m_nColorAttributeIndex);
+						convertParams.m_normalInfo.SetUniqueID(gltfDraco.m_nNormalAttributeIndex);
+						convertParams.m_texCoordInfo[0].SetUniqueID(gltfDraco.m_nTex1AttributeIndex);
+						convertParams.m_texCoordInfo[1].SetUniqueID(gltfDraco.m_nTex2AttributeIndex);
+						//convertParams.m_secondColorInfo.SetUniqueID(gltfDraco.m_nSecondColorIndex);
+						convertParams.m_pVertexAttInfo = new DracoAttributeInfo[1];
+						convertParams.m_pVertexAttInfo[0].SetUniqueID(gltfDraco.m_nSecondColorIndex);
+						convertParams.m_nVertexAttInfoCount = 1;
+						GLTFBufferView gltfBufferView = pTileInfos->m_mapBufferViews[gltfDraco.m_nBufferViewIndex];
+						DracoTool::DracoDecompress(convertParams, (char*)pTileInfos->m_mapBuffers[gltfBufferView.m_nBufferIndex].m_pBuffer + gltfBufferView.m_nByteOffset, gltfBufferView.m_nByteLength, false, 0, pDataPackage, arrIndexPackage);
+
+					}
+
+					if (IsInvalidVertex(pDataPackage))
+					{
+						delete pDataPackage;
+						pDataPackage = NULL;
+
+						for (int i = 0; i < arrIndexPackage.size(); i++)
+						{
+							IndexPackage* pIndexPackage = arrIndexPackage[i];
+							delete pIndexPackage;
+							pIndexPackage = NULL;
+						}
+						arrIndexPackage.clear();
+						return false;
+					}
+					if (pDataPackage->m_vecVertexAttData.size() > 0 && pDataPackage->m_vecVertexAttData[0] != NULL)
+					{
+						unsigned int nIDOffset = pNode->m_pairIDRange.first + pNode->m_nCurrIDOffset;
+						std::map<unsigned int, std::vector<BatchIDInfo*> > mapBatchInfo;
+						int compType = pTileInfos->m_mapAccessors[gltfAttributes.m_nBatchIds].m_nComponentType;
+						unsigned nID = 0xffffffff;
+						BatchIDInfo* pIDInfo = nullptr;
+						for (int i = 0; i < pDataPackage->m_vecVertexAttDataCount[0]; i++)
+						{
+							unsigned int nCurrentID = 0;
+							if (compType == 5122 || compType == 5123)
+							{
+								nCurrentID = *((unsigned short*)pDataPackage->m_vecVertexAttData[0] + i) + nIDOffset;
+							}
+							else if (compType == 5125)
+							{
+								nCurrentID = *((unsigned*)pDataPackage->m_vecVertexAttData[0] + i) + nIDOffset;					
+							}
+							else if (compType == 5120 || compType == 5121)
+							{
+								nCurrentID = *((unsigned char*)pDataPackage->m_vecVertexAttData[0] + i) + nIDOffset;
+							}
+							else if (compType == 5126)
+							{
+								nCurrentID = *((float*)pDataPackage->m_vecVertexAttData[0] + i) + nIDOffset;
+							}
+							if (nCurrentID == nID)
+							{
+								pIDInfo->m_nCount++;
+							}
+							else
+							{
+								pIDInfo = new BatchIDInfo;
+								pIDInfo->m_nOffset = i;
+								pIDInfo->m_nCount = 1;
+
+								if (mapBatchInfo.find(nCurrentID) == mapBatchInfo.end())
+								{
+									std::vector<BatchIDInfo*> vecCurrentIDInfo;
+									vecCurrentIDInfo.push_back(pIDInfo);
+									mapBatchInfo[nCurrentID] = vecCurrentIDInfo;
+								}
+								else
+								{
+									mapBatchInfo[nCurrentID].push_back(pIDInfo);
+								}
+								nID = nCurrentID;
+							}
+						}
+						std::vector<IDInfo*> vecIDInfo;
+						std::map<unsigned int, std::vector<BatchIDInfo*> >::iterator itor;
+						for (auto itor = mapBatchInfo.begin(); itor != mapBatchInfo.end(); itor++)
+						{
+							IDInfo* pIDInfo = new IDInfo;
+							pIDInfo->m_nID = itor->first;
+							std::vector<std::pair<int, int> >& vecOffsetAndCount = pIDInfo->m_arrVertexColorOffsetAndCount;
+							std::vector<BatchIDInfo*>& vecInfo = itor->second;
+							for (unsigned int i = 0; i < vecInfo.size(); i++)
+							{
+								vecOffsetAndCount.push_back(std::make_pair(vecInfo[i]->m_nOffset, vecInfo[i]->m_nCount));
+								delete vecInfo[i];
+								vecInfo[i] = nullptr;
+							}
+							vecInfo.clear();
+							vecIDInfo.push_back(pIDInfo);
+						}
+						pSkeleton->m_arrIDInfo = vecIDInfo;
+						mapBatchInfo.clear();
+					}
+					I3DMIDInfo i3dmInfo = m_3DTilesParser.GetI3DMInfo();
+					if (!i3dmInfo.m_vecMat.empty() && !i3dmInfo.m_vecId.empty())
+					{
+						pSkeleton->SetInstanceInfoAndIDInfo(i3dmInfo.m_vecMat, i3dmInfo.m_vecId);
+						pSkeleton->ComputerBoundingBox();
+					}
+					else
+					{
+						m_3DTilesParser.ConvertPoint(pNode, pDataPackage->m_pVertices, pDataPackage->m_nVerticesCount, pDataPackage->m_nVertexDimension, mat, pntCenter);
+					}
+					arrIndexPackage[0]->m_strPassName.push_back(strMaterialName);
+				}
+			}
+			pSkeleton->m_pVertexDataPackage = pDataPackage;
+			pSkeleton->m_arrIndexPackage = arrIndexPackage;
 		}
 		return true;
 	}
@@ -3718,6 +3938,29 @@ namespace S3MB
 		return true;
 	}
 
+	bool ProcessTools::IsInvalidVertex(VertexDataPackage* pDataPackage)
+	{
+		if (pDataPackage == NULL)
+		{
+			return true;
+		}
+
+		float* pPosData = pDataPackage->m_pVertices;
+		unsigned nVertesCount = pDataPackage->m_nVerticesCount;
+		int nVertexDimension = pDataPackage->m_nVertexDimension;
+		int nNumDim = nVertexDimension > 3 ? 3 : nVertexDimension;
+		bool bZero = true;
+		for (int i = 0; i < nVertesCount; i++)
+		{
+			for (int j = 0; j < nNumDim; j++)
+			{
+				float fPos = pPosData[nVertexDimension * i + j];
+				bZero &= EQUAL(fPos, 0);
+			}
+		}
+		return bZero;
+	}
+
 	rapidjson::Document ProcessTools::ParseBuffer(void* pBuffer, unsigned int nLength)
 	{
 		std::strstreambuf buf((char*)pBuffer, nLength);
@@ -3751,6 +3994,10 @@ namespace S3MB
 		{
 			nType = TC_I3DM;
 		}
+		else if (head[0] == 'g'  && head[1] == 'l' && head[2] == 'T' && head[3] == 'F')
+		{
+			nType = TC_GLB;
+		}
 
 		return nType;
 	}
@@ -3779,6 +4026,28 @@ namespace S3MB
 			assert(false);
 		}
 		return nType;
+	}
+
+	bool ProcessTools::ReadFileDataToStream(const std::wstring& strFile, MemoryStream& stream)
+	{
+#ifdef WIN32
+		std::ifstream ifs(strFile, ios::in | ios::binary);
+#else
+		string filePath = StringUtil::UNICODE_to_UTF8(strFile);
+		std::ifstream ifs(filePath, ios::in | ios::binary);
+#endif
+		if (!ifs)
+		{
+			return false;
+		}
+		ifs.seekg(0, ios::end);
+		int size = ifs.tellg();
+		ifs.seekg(0, ios::beg);
+		char* buffer = new char[size];
+		ifs.read(buffer, size);
+		ifs.close();
+		stream.Init(buffer, size, true);
+		return true;
 	}
 
 	int ProcessTools::NumOfComponents(std::string strType)

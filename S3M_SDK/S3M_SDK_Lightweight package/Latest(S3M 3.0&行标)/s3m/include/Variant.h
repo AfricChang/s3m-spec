@@ -71,7 +71,7 @@ namespace S3MB
 		// int类型构造函数
 		Variant(int iVal);
 		// long类型构造函数
-		Variant(long lVal);
+		Variant(long long lVal);
 		// float类型构造函数
 		Variant(float fVal);
 		// double类型构造函数
@@ -93,7 +93,7 @@ namespace S3MB
 		// 将 iVal 赋值变体
 		const Variant& operator=(int iVal);
 		// 将 lVal 赋值变体
-		const Variant& operator=(long lVal);
+		const Variant& operator=(long long lVal);
 		// 将 fVal 赋值变体
 		const Variant& operator=(float fVal);
 		// 将 dVal 赋值变体
@@ -122,7 +122,7 @@ namespace S3MB
 		// 设置变量值为nVal 
 		void Set(int nVal);
 		// 设置变量值为nVal 
-		void Set(long lVal);
+		void Set(long long lVal);
 		// 设置变量值为dVal 
 		void Set(float dVal);
 		// 设置变量值为dVal 
@@ -158,7 +158,7 @@ namespace S3MB
 		// 转换为int32 类型
 		int ToInt() const;
 		// 转换为int64 类型
-		long ToLong() const;
+		long long ToLong() const;
 		// 转换为String类型
 		// 说明： 对于Time类型，转换成数据库识别的格式也就是 %Y-%m-%d %H:%M:%S 。
 		wstring ToString() const;

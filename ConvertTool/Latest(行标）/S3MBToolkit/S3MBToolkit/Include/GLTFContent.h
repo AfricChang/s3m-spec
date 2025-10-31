@@ -63,6 +63,9 @@ namespace S3MB
 		int m_nColorIndex;
 		int m_nTex1Index;
 		int m_nTex2Index;
+		int m_nRotation;
+		int m_nScale;
+		std::vector<int> m_vecFeatureID;
 		GLTFAttributes()
 		{
 			m_nBatchIds = -1;
@@ -71,6 +74,8 @@ namespace S3MB
 			m_nColorIndex = -1;
 			m_nTex1Index = -1;
 			m_nTex2Index = -1;
+			m_nRotation = -1;
+			m_nScale = -1;
 		}
 	};
 
@@ -83,6 +88,7 @@ namespace S3MB
 		int m_nTex2AttributeIndex;
 		int m_nSecondColorIndex;
 		int m_nBufferViewIndex;
+		std::vector<int> m_vecFeatureID;
 		GLTFDraco()
 		{
 			m_nPosAttributeIndex = -1;
@@ -95,6 +101,14 @@ namespace S3MB
 		}
 	};
 
+	struct GLTFFeatureId
+	{
+		int nFeatureCount;
+		int nAttribute;
+		int nPropertyTable;
+	};
+
+
 	struct GLTFPrimitive
 	{
 		GLTFAttributes m_gltfAttributes;
@@ -102,10 +116,11 @@ namespace S3MB
 		int m_nIndices;
 		int m_nDrawType;
 		int m_nMaterialIndex;
+		std::vector<GLTFFeatureId> m_vecFeatureId;
 		GLTFPrimitive()
 		{
 			m_nIndices = -1;
-			m_nDrawType = -1;
+			m_nDrawType = 4;
 			m_nMaterialIndex = -1;
 		}
 	};
@@ -356,6 +371,7 @@ namespace S3MB
 	struct GLTFTreeNode
 	{
 		std::wstring			m_strFile;
+		std::vector<std::wstring>	m_vecFile;
 		std::wstring			m_strParentDir;
 		BoundingSphere			m_boundSphere;
 		int						m_nLod;
@@ -367,6 +383,7 @@ namespace S3MB
 		bool					m_bFileFind;
 
 		std::pair<unsigned int, unsigned int> m_pairIDRange;
+		int						m_nCurrIDOffset;
 
 		GLTFTreeNode()
 		{
@@ -377,12 +394,118 @@ namespace S3MB
 			m_dGeometryError = 0;
 			m_bFileFind = false;
 			m_pairIDRange = std::make_pair(0, 0);
+			m_nCurrIDOffset = 0;
 		}
 
 		~GLTFTreeNode()
 		{
 		}
 	};
+
+	enum class PropType : unsigned
+	{
+		UNKNOWNTYPE,
+		SCALAR,
+		VEC2,
+		VEC3,
+		VEC4,
+		MAT2,
+		MAT3,
+		MAT4,
+		BOOLEAN,
+		STRING,
+		ENUM
+	};
+
+	enum class PropComponentType : unsigned
+	{
+		UNKNOWN_TYPE,
+		INT8,
+		UINT8,
+		INT16,
+		UINT16,
+		INT32,
+		UINT32,
+		INT64,
+		UINT64,
+		FLOAT32,
+		FLOAT64
+	};
+
+	struct GLTFProp
+	{
+		int nValues;
+		unsigned char* pValueBuffer = nullptr;
+		int nStringOffset;
+		unsigned char* pStrOffsetBuffer = nullptr;
+		std::wstring strStringOffsetType;
+		PropComponentType eStringOffsetType;
+		int nArrayOffset;
+		unsigned char* pArrOffsetBuffer = nullptr;
+		std::wstring strArrayOffsetType;
+		PropComponentType eArrayOffsetType;
+		//~GLTFProp()
+		//{
+		//	if (pValue != nullptr)
+		//	{
+		//		delete pValue;
+		//		pValue = nullptr;
+		//	}
+		//	if (pStrOffsetValue != nullptr)
+		//	{
+		//		delete pStrOffsetValue;
+		//		pStrOffsetValue = nullptr;
+		//	}
+		//	if (pArrOffsetValue != nullptr)
+		//	{
+		//		delete pArrOffsetValue;
+		//		pArrOffsetValue = nullptr;
+		//	}
+		//}
+	};
+
+	struct GLTFPropertyTable
+	{
+		bool bHandled;
+		unsigned nBatchIDStart;
+		std::wstring strClassName;
+		std::wstring strName;
+		int nCount;
+		std::map<std::wstring, GLTFProp> mapProps;
+	};
+	struct PropInfo
+	{
+		std::string strKey;
+		std::string strAlias;
+		std::string strType;
+		int nSize = 0;
+		std::string strComponentType;
+		PropType eType = PropType::UNKNOWNTYPE;
+		PropComponentType eComponentType = PropComponentType::UNKNOWN_TYPE;
+		//下面的暂时没用到
+		std::string strClassDisplayName;
+		std::string strClassFullName;
+	};
+
+	struct GLTFSchemaProp
+	{
+		std::wstring strName;
+		std::wstring strType;
+		std::wstring strComponentType;
+	};
+
+	struct GLTFSchemaClass
+	{
+		std::wstring strName;
+		std::map<std::wstring, GLTFSchemaProp> mapScemaProp;
+	};
+
+	struct GLTFMetaData
+	{
+		std::vector<GLTFPropertyTable> vecPropTable;
+		std::map<std::wstring, GLTFSchemaClass> mapSchemaClass;
+	};
+
 
 	struct GLTFTileInfos_1
 	{
@@ -411,6 +534,8 @@ namespace S3MB
 		std::map<unsigned int, std::vector<GLTFMaterial> > m_mapMaterials;
 		std::map<unsigned int, GLTFTexture> m_mapTextures;
 		std::map<unsigned int, GLTFImage> m_mapImages;
+
+		GLTFMetaData m_metaData;
 		// 向上轴类型
 		AxisUpType m_nAxisUpType;
 		Vector3d m_vCesuimRTC = Vector3d();
