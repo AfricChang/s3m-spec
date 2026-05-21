@@ -1,1 +1,16 @@
 S3M_SDK/Build
+
+# Visual Studio / CMake generated files
+**/.vs/
+**/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Local-only artifacts kept out of the fork
+ConvertTool/Original(S3M 1.0)/IEarth_Qt/
+S3M_SDK/S3M_SDK_Lightweight package/Latest(S3M 3.0&行标)/draco_code/
+S3M_SDK/S3M_SDK_Lightweight package/Latest(S3M 3.0&行标)/3rdparty/draco - 副本.zip

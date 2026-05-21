@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "S3MBEnums.h"
 #include <map>
+#include <string>
 #include <string.h>
 #include <vector>
 #ifndef WIN32
@@ -19,14 +20,14 @@ namespace S3MB
 	#define FLTMAX 3.402823466e+38F
 	#define FLTMIN 1.175494351e-38F
 
-	#ifndef IS0(x)
+	#ifndef IS0
 	//  极小值定义
 	#define EP 1e-10
 	#define NEP -1e-10
 	#define IS0(x) (((x) < EP) && ((x) > NEP))
 	#endif // !IS0(x)
 
-	#ifndef EQUAL(x,y)
+	#ifndef EQUAL
 	#define EQUAL(x,y) Equal(x, y)
 	#endif // !EQUAL(X,Y)
 
